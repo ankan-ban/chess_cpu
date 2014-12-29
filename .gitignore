@@ -2,6 +2,11 @@
 Thumbs.db
 ehthumbs.db
 
+# Out folders
+Debug
+Release
+x64
+
 # Folder config file
 Desktop.ini
 
