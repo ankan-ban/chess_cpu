@@ -125,6 +125,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="bitboard.cpp" />
+    <ClCompile Include="eval.cpp" />
     <ClCompile Include="magics.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="move_gen.cpp" />

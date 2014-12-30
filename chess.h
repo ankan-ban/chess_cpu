@@ -690,6 +690,9 @@ private:
     template<uint8 chance>
     static int generateMoves(HexaBitBoardPosition *pos, CMove *genMoves);
 
+
+    static float getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const float table[]);
+
 public:
     static bool IsInCheck(HexaBitBoardPosition *pos);
 

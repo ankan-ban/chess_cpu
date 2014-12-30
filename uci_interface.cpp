@@ -223,6 +223,12 @@ void UciInterface::ProcessCommands()
             uint64 time = (double) timer.stop();
             printf("perft %d: %llu, time: %llu ms, nps: %llu\n", depth, val, time, val * 1000 / time);
         }
+        else if (strstr(input, "eval"))
+        {
+            HexaBitBoardPosition curPos;
+            Game::GetPos(&curPos);
+            printf("Board Eval: %f\n", BitBoardUtils::Evaluate(&curPos));
+        }
         else if (strstr(input, "stop")) {
             if (worker_thread && Game::searching)
             {

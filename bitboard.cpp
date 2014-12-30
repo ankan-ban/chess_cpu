@@ -1372,61 +1372,6 @@ void BitBoardUtils::MakeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move
     }
 }
 
-
-// simple evaluation function taken from chess programming wiki
-// References:
-// https://chessprogramming.wikispaces.com/Evaluation
-// https://chessprogramming.wikispaces.com/Simplified+evaluation+function
-// Ankan - TODO: experiment with this and tune it further!
-
-// all values in centi-pawns
-#define QUEEN_MATERIAL_VAL  900
-#define ROOK_MATERIAL_VAL   500
-#define BISHOP_MATERIAL_VAL 300
-#define KNIGHT_MATERIAL_VAL 300
-#define PAWN_MATERIAL_VAL   100
-
-// call templated version (on chance) of the function internally?
-float BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
-{
-    uint64 allPawns     = pos->pawns & RANKS2TO7;    // get rid of game state variables
-    uint64 allPieces    = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
-
-    uint64 allQueens    = pos->bishopQueens & pos->rookQueens;
-    uint64 allRooks     = pos->rookQueens ^ allQueens;
-    uint64 allBishops   = pos->bishopQueens ^ allQueens;
-    uint64 allKnights   = pos->knights;
-
-    uint64 whitePieces  = pos->whitePieces;
-    uint64 blackPieces  = allPieces & (~pos->whitePieces);
-
-    uint64 whitePawns   = allPawns    & whitePieces;
-    uint64 whiteKnights = allKnights  & whitePieces;
-    uint64 whiteQueens  = allQueens   & whitePieces;
-    uint64 whiteRooks   = allRooks    & whitePieces;
-    uint64 whiteBishops = allBishops  & whitePieces;
-
-    // material eval
-    float material = 0;
-
-    material += (2.0f * popCount(whiteQueens)  - popCount(allQueens))  * QUEEN_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteRooks)   - popCount(allRooks))   * ROOK_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteBishops) - popCount(allBishops)) * BISHOP_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteKnights) - popCount(allKnights)) * KNIGHT_MATERIAL_VAL;
-    material += (2.0f * popCount(whitePawns)   - popCount(allPawns))   * PAWN_MATERIAL_VAL;
-
-
-    float finalEval = material;
-
-    // we computed everything when viewed from white's side, reverse the sign if it's black's chance
-    if (pos->chance == BLACK)
-    {
-        finalEval = -finalEval;
-    }
-
-    return finalEval;
-}
-
 // Ankan - TODO: check if this can be optimized? Maybe simplify the bitboard structure?
 bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
 {
@@ -1445,7 +1390,7 @@ bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
     uint64 myKing = pos->kings & myPieces;
 
     uint64 threatened = findAttackedSquares(~allPieces, enemyBishops, enemyRooks, allPawns & enemyPieces,
-                        pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
+                                            pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
 
     if (threatened & myKing)
     {
@@ -1453,3 +1398,4 @@ bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
     }
     return false;
 }
+
