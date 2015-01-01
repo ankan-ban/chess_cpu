@@ -115,7 +115,7 @@
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
       <GenerateAlternateCodePaths>AVX2</GenerateAlternateCodePaths>
-      <UseProcessorExtensions>SSSE3</UseProcessorExtensions>
+      <UseProcessorExtensions>SSE42</UseProcessorExtensions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -129,6 +129,7 @@
     <ClCompile Include="magics.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="move_gen.cpp" />
+    <ClCompile Include="search.cpp" />
     <ClCompile Include="uci_interface.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>

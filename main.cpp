@@ -1,5 +1,4 @@
 #include "chess.h"
-#include "bb_consts.h"
 
 int main()
 {
@@ -72,136 +71,6 @@ void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int bi
 }
 
 
-// negamax forumlation of alpha-beta search
-template<uint8 chance>
-float Game::alphabeta(HexaBitBoardPosition *pos, int depth, int curPly, float alpha, float beta)
-{
-    if (depth == 0)
-    {
-        // TODO: Quiescence Search
-        nodes++;
-        return BitBoardUtils::Evaluate(pos);
-    }
-
-    uint64 posHash = BitBoardUtils::ComputeZobristKey(pos);
-    posHashes[curPly] = posHash;
-
-    if (curPly != plyNo + 1)    // avoid evaluating draws at root
-    {
-        for (int i = 0; i < curPly; i++)
-        {
-            if (posHashes[i] == posHash)
-            {
-                return 0;   // draw by repetition
-            }
-        }
-    }
-
-
-
-    // generate child nodes
-    CMove newMoves[MAX_MOVES];
-    int nMoves;
-
-    uint64 allPawns = pos->pawns & RANKS2TO7;
-    uint64 allPieces = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
-    uint64 blackPieces = allPieces & (~pos->whitePieces);
-
-    uint64 myPieces = (chance == WHITE) ? pos->whitePieces : blackPieces;
-    uint64 enemyPieces = (chance == WHITE) ? blackPieces : pos->whitePieces;
-
-    uint64 enemyBishops = pos->bishopQueens & enemyPieces;
-    uint64 enemyRooks = pos->rookQueens & enemyPieces;
-
-    uint64 myKing = pos->kings & myPieces;
-    uint8  kingIndex = BitBoardUtils::bitScan(myKing);
-
-    uint64 pinned = BitBoardUtils::findPinnedPieces(pos->kings & myPieces, myPieces, enemyBishops, enemyRooks, allPieces, kingIndex);
-
-    uint64 threatened = BitBoardUtils::findAttackedSquares(~allPieces, enemyBishops, enemyRooks, allPawns & enemyPieces,
-                                                           pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
-
-
-    float bestScore = -INF;
-    int bestChild = 0;
-    int searched = 0;
-
-    bool inCheck = !!(threatened & myKing);
-    if (inCheck)
-    {
-        nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(pos, newMoves, allPawns, allPieces, myPieces, enemyPieces, pinned, threatened, kingIndex);
-    }
-    else
-    {
-        // TODO: see if refactoring out common code (e.g, find pinned, threatened, etc) can improve performance significantly?
-        // have a structure - ExpandedBitboardPosition containing - all mypieces, enemypieces, mypawns, enemypawns, ... pinned, threatened, etc... and pass the structure around
-        nMoves = BitBoardUtils::generateCaptures<chance>(pos, newMoves);                // generate captures in MVV-LVA order
-
-        // search captures first
-        for (int i = 0; i < nMoves; i++)
-        {
-            HexaBitBoardPosition newPos = *pos;
-            uint64 hash = 0;
-            BitBoardUtils::MakeMove(&newPos, hash, newMoves[i]);
-
-            float curScore = -alphabeta<!chance>(&newPos, depth - 1, curPly + 1, -beta, -alpha);
-            if (curScore >= beta)
-            {
-                return beta;
-            }
-
-            if (curScore > alpha)
-            {
-                alpha = curScore;
-                bestChild = i;
-            }
-        }
-        searched = nMoves;
-
-        nMoves += BitBoardUtils::generateNonCaptures<chance>(pos, &newMoves[nMoves]);   // then rest of the moves
-    }
-
-
-    // special case: Check if it's checkmate or stalemate
-    if (nMoves == 0)
-    {
-        if (inCheck)
-        {
-            return - ((float) INF/MAX_GAME_LENGTH) * depth;
-        }
-        else
-        {
-            return 0;
-        }
-    }
-
-   
-    for (int i = searched; i < nMoves; i++)
-    {
-        HexaBitBoardPosition newPos = *pos;
-        uint64 hash = 0;
-        BitBoardUtils::MakeMove(&newPos, hash, newMoves[i]);
-
-        float curScore = -alphabeta<!chance>(&newPos, depth - 1, curPly + 1, -beta, -alpha);
-        if (curScore >= beta)
-        {
-            return beta;
-        }
-
-        if (curScore > alpha)
-        {
-            alpha = curScore;
-            bestChild = i;
-        }
-    }
-
-    // this is wrong.. TODO: Ankan - fix this.
-    pv[depth] = newMoves[bestChild];
-
-    return alpha;
-}
-
-
 void Game::StartSearch()
 {
     searching = true;
@@ -221,7 +90,6 @@ void Game::StartSearch()
 
         CMove currentDepthBest = pv[depth];
 
-        // TODO: update bestmove inside a critical section?
         bestMove = currentDepthBest;
 
         uint64 timeElapsed = timer.stop();
@@ -230,7 +98,32 @@ void Game::StartSearch()
         {
             nps /= timeElapsed;    // time is in ms
         }
-        printf("info depth %d score cp %d nodes %llu time %llu nps %llu pv ", depth, (int) eval, nodes, timeElapsed, nps);
+
+        bool foundMate = false; // don't waste anymore time if we already found a mate
+
+        // print mate score correctly
+        if (abs(eval) >= MATE_SCORE_BASE)
+        {
+            foundMate = true;
+            int mateDepth = (int)(abs(eval) / MATE_SCORE_BASE - MAX_GAME_LENGTH);
+
+            // convert the depth to be relative to current position (distance from mate)
+            mateDepth = (depth - mateDepth);
+
+            if (eval < 0)
+                mateDepth = -mateDepth;
+
+            // mateDepth is in plies -> convert it into moves
+            mateDepth /= 2;
+
+            printf("info depth %d score mate %d nodes %llu time %llu nps %llu pv ", depth, mateDepth, nodes, timeElapsed, nps);
+        }
+        else
+        {
+            printf("info depth %d score cp %d nodes %llu time %llu nps %llu pv ", depth, (int)eval, nodes, timeElapsed, nps);
+        }
+
+        // display the PV (TODO: currently the PV is wrong after second move)
         for (int i = depth; i > 0; i--)
         {
             Utils::displayCompactMove(pv[i]);
@@ -239,7 +132,7 @@ void Game::StartSearch()
         fflush(stdout);
 
         // TODO: better time management
-        if (timeElapsed > (searchTime / 2.0f))
+        if (foundMate || (timeElapsed > (searchTime / 2.0f)))
         {
             break;
         }

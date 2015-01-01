@@ -1373,6 +1373,7 @@ void BitBoardUtils::MakeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move
 }
 
 // Ankan - TODO: check if this can be optimized? Maybe simplify the bitboard structure?
+// no longer used
 bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
 {
     uint8 chance = pos->chance;
@@ -1399,3 +1400,51 @@ bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
     return false;
 }
 
+
+template<uint8 chance>
+ExpandedBitBoard BitBoardUtils::ExpandBitBoard(HexaBitBoardPosition *pos)
+{
+    ExpandedBitBoard op;
+
+    op.pawns            = pos->pawns & RANKS2TO7;
+    op.allPieces        = pos->kings | op.pawns | pos->knights | pos->bishopQueens | pos->rookQueens;
+
+    uint64 blackPieces  = op.allPieces & (~pos->whitePieces);
+
+    op.myPieces         = (chance == WHITE) ? pos->whitePieces : blackPieces;
+    op.enemyPieces      = (chance == WHITE) ? blackPieces : pos->whitePieces;
+
+    op.kings            = pos->kings;
+    op.knights          = pos->knights;
+    op.bishopQueens     = pos->bishopQueens;
+    op.rookQueens       = pos->rookQueens;
+
+
+    op.myPawns          = op.pawns        & op.myPieces;
+    op.myKnights        = op.knights      & op.myPieces;
+    op.myBishopQueens   = op.bishopQueens & op.myPieces;
+    op.myRookQueens     = op.rookQueens   & op.myPieces;
+    op.myKing           = op.kings        & op.myPieces;
+
+    op.enemyPawns       = op.pawns        & op.enemyPieces;
+    op.enemyKnights     = op.knights      & op.enemyPieces;
+    op.enemyKing        = op.kings        & op.enemyPieces;
+    op.enemyBishopQueens= op.bishopQueens & op.enemyPieces;
+    op.enemyRookQueens  = op.rookQueens   & op.enemyPieces;
+
+    op.myKingIndex = bitScan(op.myKing);
+
+
+    op.threatened       = findAttackedSquares(~op.allPieces, op.enemyBishopQueens, op.enemyRookQueens, op.enemyPawns, op.enemyKnights, op.enemyKing, op.myKing, !chance);
+    op.pinned           = findPinnedPieces(op.myKing, op.myPieces, op.enemyBishopQueens, op.enemyRookQueens, op.allPieces, op.myKingIndex);
+
+    op.enPassent        = pos->enPassent;
+    op.whiteCastle      = pos->whiteCastle;
+    op.blackCastle = pos->blackCastle;
+
+    return op;
+}
+
+
+template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<WHITE>(HexaBitBoardPosition *pos);
+template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<BLACK>(HexaBitBoardPosition *pos);

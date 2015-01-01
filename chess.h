@@ -193,7 +193,7 @@ struct HexaBitBoardPosition
         {
             uint8 whiteCastle : 2;
             uint8 blackCastle : 2;
-            uint8 enPassent : 4;         // file + 1 (file is the file containing the enpassent-target pawn)
+            uint8 enPassent   : 4;       // file + 1 (file is the file containing the enpassent-target pawn)
             uint8 padding[6];
             uint8 halfMoveCounter : 7;   // to detect 50 move draw rule
             uint8 chance : 1;
@@ -295,6 +295,7 @@ code	promotion	capture	special 1	special 0	kind of move
 // e.g, test this FEN string "3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk w - - 0 1"
 #define MAX_MOVES 256
 #define MAX_GAME_LENGTH 1024
+#define MATE_SCORE_BASE 65536.0f
 
 // max no of moves possible by a single piece
 // actually it's 27 for a queen when it's in the center of the board
@@ -443,6 +444,10 @@ private:
     template<uint8 chance>
     static float alphabeta(HexaBitBoardPosition *pos, int depth, int ply, float alpha, float beta);
 
+    // perform q-search
+    template<uint8 chance>
+    static float q_search(HexaBitBoardPosition *pos, int depth, float alpha, float beta);
+
     static uint64 perft(HexaBitBoardPosition *pos, int depth);
 
     // for testing
@@ -493,6 +498,40 @@ struct FancyMagicEntry
         uint4 data;
 #endif
     };
+};
+
+// expanded bit board
+struct ExpandedBitBoard
+{
+    uint64 allPieces;
+    uint64 myPieces;
+    uint64 enemyPieces;
+
+    uint64 knights;
+    uint64 bishopQueens;
+    uint64 rookQueens;
+    uint64 kings;
+    uint64 pawns;
+
+    uint64 myPawns;
+    uint64 myKing;
+    uint64 myKnights;
+    uint64 myBishopQueens;
+    uint64 myRookQueens;
+
+    uint64 enemyPawns;
+    uint64 enemyKing;
+    uint64 enemyKnights;
+    uint64 enemyBishopQueens;
+    uint64 enemyRookQueens;
+
+    uint64 pinned;
+    uint64 threatened;
+
+    uint8  myKingIndex;
+    uint8  enPassent;
+    uint8  whiteCastle;
+    uint8  blackCastle;
 };
 
 class BitBoardUtils
@@ -565,10 +604,8 @@ private:
 
 
     // util functions
-public:
     static uint8 popCount(uint64 x);
     static uint8 bitScan (uint64 x);
-private:
 
     static uint64 getOne(uint64 x);
 
@@ -647,10 +684,9 @@ private:
     static uint64 sqsInLine(uint8 sq1, uint8 sq2);
 
     static void updateCastleFlag(HexaBitBoardPosition *pos, uint64 dst, uint8 chance);
-public:
-    static uint64 findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
-    static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
-                                      uint64 enemyKing, uint64 myKing, uint8 enemyColor);
+    __forceinline static uint64 findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
+    __forceinline static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
+                                                    uint64 enemyKing, uint64 myKing, uint8 enemyColor);
 private:
 
     static void addMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *newBoard);
@@ -664,8 +700,8 @@ private:
     static void addEnPassentMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *pos, uint64 src, uint64 dst, uint8 chance);
     static void addPawnMoves(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *pos, uint64 src, uint64 dst, uint8 chance);
 
-    static void addCompactMove(int *nMoves, CMove **genMoves, uint8 from, uint8 to, uint8 flags);
-    static void addCompactPawnMoves(int *nMoves, CMove **genMoves, uint8 from, uint64 dst, uint8 flags);
+    __forceinline static void addCompactMove(int *nMoves, CMove **genMoves, uint8 from, uint8 to, uint8 flags);
+    __forceinline static void addCompactPawnMoves(int *nMoves, CMove **genMoves, uint8 from, uint64 dst, uint8 flags);
 
     // used for magic lookup table initialization
     static uint64 getOccCombo(uint64 mask, uint64 i);
@@ -684,7 +720,13 @@ private:
     static void generateSlidingCapturesForSquare(uint64 square, uint8 sqIndex, uint64 slidingSources, uint64 pinned, uint8 kingIndex, int *nMoves, CMove **genMoves);
 
     template<uint8 chance>
-    static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+    static int generateMoves(HexaBitBoardPosition *pos, CMove *genMoves);
+
+    template<uint8 chance>
+    static int generateMovesOutOfCheck(HexaBitBoardPosition *pos, CMove *genMoves, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
+
+    template<uint8 chance>
+    __forceinline static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
                                             uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves);
 
     // core functions
@@ -701,18 +743,19 @@ public:
     static int countMoves(HexaBitBoardPosition *pos);
 
     template<uint8 chance>
-    static int generateMoves(HexaBitBoardPosition *pos, CMove *genMoves);
+    static int generateCaptures(const ExpandedBitBoard *bb, CMove *genMoves);
 
     template<uint8 chance>
-    static int generateCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
+    static int generateNonCaptures(const ExpandedBitBoard *bb, CMove *genMoves);
 
     template<uint8 chance>
-    static int generateNonCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
-
-    template<uint8 chance>
-    static int generateMovesOutOfCheck(HexaBitBoardPosition *pos, CMove *genMoves, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
+    static int generateMovesOutOfCheck(const ExpandedBitBoard *bb, CMove *genMoves);
 
 public:
+    // unpack the bitboard structure
+    template<uint8 chance>
+    __forceinline static ExpandedBitBoard ExpandBitBoard(HexaBitBoardPosition *pos);
+
     static bool IsInCheck(HexaBitBoardPosition *pos);
 
     // count the no of child moves possible at given board position
