@@ -874,8 +874,8 @@ uint64 BitBoardUtils::findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 en
 // the king shouldn't ever attempt to move to a threatened square
 // TODO: maybe make this tempelated on color?
 uint64 BitBoardUtils::findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks,
-    uint64 enemyPawns, uint64 enemyKnights, uint64 enemyKing,
-    uint64 myKing, uint8 enemyColor)
+                                          uint64 enemyPawns, uint64 enemyKnights, uint64 enemyKing,
+                                          uint64 myKing, uint8 enemyColor)
 {
     uint64 attacked = 0;
 

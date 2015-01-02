@@ -430,7 +430,7 @@ private:
     static CMove bestMove;
 
     // the principal variation for the current search
-    static int pv[MAX_GAME_LENGTH];
+    static CMove pv[MAX_GAME_LENGTH];
 
     // to detect repetitions (and avoid/cause draw based on it)
     // plyNo is relative to the position provided in "position" uci command
@@ -440,9 +440,14 @@ private:
     static uint64 nodes;
 
     // perform alpha-beta search on the given position
+    template<uint8 chance>
     static float alphabeta(HexaBitBoardPosition *pos, int depth, int ply, float alpha, float beta);
 
     static uint64 perft(HexaBitBoardPosition *pos, int depth);
+
+    // for testing
+    template<uint8 chance>
+    static uint64 perft_test(HexaBitBoardPosition *pos, int depth);
 public:
     // set hash for a previous board position (also update ply no)
     static void SetHashForPly(int ply, uint64 hash)                  { posHashes[ply] = hash; assert(ply >= plyNo); plyNo = ply; }
@@ -560,9 +565,11 @@ private:
 
 
     // util functions
+public:
     static uint8 popCount(uint64 x);
     static uint8 bitScan (uint64 x);
-    
+private:
+
     static uint64 getOne(uint64 x);
 
     static bool isMultiple(uint64 x);
@@ -640,10 +647,11 @@ private:
     static uint64 sqsInLine(uint8 sq1, uint8 sq2);
 
     static void updateCastleFlag(HexaBitBoardPosition *pos, uint64 dst, uint8 chance);
+public:
     static uint64 findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
     static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
                                       uint64 enemyKing, uint64 myKing, uint8 enemyColor);
-
+private:
 
     static void addMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *newBoard);
     static void addSlidingMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *pos, uint64 src, uint64 dst, uint8 chance);
@@ -673,11 +681,16 @@ private:
     template<uint8 chance>
     static int countMovesOutOfCheck(HexaBitBoardPosition *pos, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
 
-    template<uint8 chance>
-    static int generateMovesOutOfCheck(HexaBitBoardPosition *pos, CMove *genMoves, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
+    static void generateSlidingCapturesForSquare(uint64 square, uint8 sqIndex, uint64 slidingSources, uint64 pinned, uint8 kingIndex, int *nMoves, CMove **genMoves);
 
+    template<uint8 chance>
+    static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+                                            uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves);
 
     // core functions
+    static float getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const float table[]);
+
+public:
     template<uint8 chance>
     static void makeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
 
@@ -690,8 +703,14 @@ private:
     template<uint8 chance>
     static int generateMoves(HexaBitBoardPosition *pos, CMove *genMoves);
 
+    template<uint8 chance>
+    static int generateCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
 
-    static float getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const float table[]);
+    template<uint8 chance>
+    static int generateNonCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
+
+    template<uint8 chance>
+    static int generateMovesOutOfCheck(HexaBitBoardPosition *pos, CMove *genMoves, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
 
 public:
     static bool IsInCheck(HexaBitBoardPosition *pos);
@@ -704,6 +723,10 @@ public:
 
     // generate child boards for the given board position
     static int GenerateBoards(HexaBitBoardPosition *pos, HexaBitBoardPosition *newPositions);
+
+    // generate only captures - in MVV-LVA order
+    static int GenerateCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
+    static int GenerateNonCaptures(HexaBitBoardPosition *pos, CMove *genMoves);
 
     // make the given move in the given board position
     static void MakeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move);

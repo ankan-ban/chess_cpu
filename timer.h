@@ -15,6 +15,12 @@ public:
         return time.count();
     }
 
+    long long getElapsedMicroSeconds()
+    {
+        std::chrono::microseconds time = std::chrono::duration_cast<std::chrono::microseconds> (std::chrono::high_resolution_clock::now() - startTime);
+        return time.count();
+    }
+
 private:
     std::chrono::high_resolution_clock::time_point startTime;
     

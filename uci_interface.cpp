@@ -90,6 +90,7 @@ void UciInterface::WorkerThreadMain()
     Game::StartSearch();
     printf("bestmove ");
     Utils::displayCompactMove(Game::GetBestMove());
+    printf("\n");
     fflush(stdout);
 }
 
@@ -112,8 +113,8 @@ void UciInterface::ProcessCommands()
             // first command to indicate uci mode
 
             // send back the IDs
-            printf("id name AnkanChess 0.0\n");
-            printf("id author Ankan Banerjee\n");
+            printf("id name AnkanChess 0.0\n\n");
+            printf("id author Ankan Banerjee\n\n");
             fflush(stdout);
             BitBoardUtils::init();
 
@@ -220,8 +221,9 @@ void UciInterface::ProcessCommands()
             Timer timer;
             timer.start();
             uint64 val = Game::Perft(depth);
-            uint64 time = (double) timer.stop();
-            printf("perft %d: %llu, time: %llu ms, nps: %llu\n", depth, val, time, val * 1000 / time);
+            uint64 time = timer.getElapsedMicroSeconds();
+            uint64 nps = time ? val * 1000000 / time : 0;
+            printf("perft %d: %llu, time: %llu us, nps: %llu\n", depth, val, time, nps);
         }
         else if (strstr(input, "eval"))
         {
@@ -229,7 +231,8 @@ void UciInterface::ProcessCommands()
             Game::GetPos(&curPos);
             printf("Board Eval: %f\n", BitBoardUtils::Evaluate(&curPos));
         }
-        else if (strstr(input, "stop")) {
+        else if (strstr(input, "stop")) 
+        {
             if (worker_thread && Game::searching)
             {
                 // crap... there is no way to forcefully terminate a C++11 thread :-/
@@ -238,10 +241,6 @@ void UciInterface::ProcessCommands()
                 worker_thread = NULL;
             }
             // stop the current line of search, and display the best move found
-            printf("bestmove ");
-            Utils::displayCompactMove(Game::GetBestMove());
-            fflush(stdout);
-
         }
         fflush(stdout);
     }

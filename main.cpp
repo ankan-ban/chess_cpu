@@ -1,4 +1,5 @@
 #include "chess.h"
+#include "bb_consts.h"
 
 int main()
 {
@@ -17,7 +18,7 @@ int Game::searchTime;
 int Game::maxSearchDepth;
 
 CMove Game::bestMove;
-int   Game::pv[MAX_GAME_LENGTH];
+CMove Game::pv[MAX_GAME_LENGTH];
 
 uint64 Game::nodes;
 
@@ -72,6 +73,7 @@ void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int bi
 
 
 // negamax forumlation of alpha-beta search
+template<uint8 chance>
 float Game::alphabeta(HexaBitBoardPosition *pos, int depth, int curPly, float alpha, float beta)
 {
     if (depth == 0)
@@ -95,14 +97,75 @@ float Game::alphabeta(HexaBitBoardPosition *pos, int depth, int curPly, float al
         }
     }
 
+
+
     // generate child nodes
-    HexaBitBoardPosition newPositions[MAX_MOVES];
-    int nMoves = BitBoardUtils::GenerateBoards(pos, newPositions);
+    CMove newMoves[MAX_MOVES];
+    int nMoves;
+
+    uint64 allPawns = pos->pawns & RANKS2TO7;
+    uint64 allPieces = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
+    uint64 blackPieces = allPieces & (~pos->whitePieces);
+
+    uint64 myPieces = (chance == WHITE) ? pos->whitePieces : blackPieces;
+    uint64 enemyPieces = (chance == WHITE) ? blackPieces : pos->whitePieces;
+
+    uint64 enemyBishops = pos->bishopQueens & enemyPieces;
+    uint64 enemyRooks = pos->rookQueens & enemyPieces;
+
+    uint64 myKing = pos->kings & myPieces;
+    uint8  kingIndex = BitBoardUtils::bitScan(myKing);
+
+    uint64 pinned = BitBoardUtils::findPinnedPieces(pos->kings & myPieces, myPieces, enemyBishops, enemyRooks, allPieces, kingIndex);
+
+    uint64 threatened = BitBoardUtils::findAttackedSquares(~allPieces, enemyBishops, enemyRooks, allPawns & enemyPieces,
+                                                           pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
+
+
+    float bestScore = -INF;
+    int bestChild = 0;
+    int searched = 0;
+
+    bool inCheck = !!(threatened & myKing);
+    if (inCheck)
+    {
+        nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(pos, newMoves, allPawns, allPieces, myPieces, enemyPieces, pinned, threatened, kingIndex);
+    }
+    else
+    {
+        // TODO: see if refactoring out common code (e.g, find pinned, threatened, etc) can improve performance significantly?
+        // have a structure - ExpandedBitboardPosition containing - all mypieces, enemypieces, mypawns, enemypawns, ... pinned, threatened, etc... and pass the structure around
+        nMoves = BitBoardUtils::generateCaptures<chance>(pos, newMoves);                // generate captures in MVV-LVA order
+
+        // search captures first
+        for (int i = 0; i < nMoves; i++)
+        {
+            HexaBitBoardPosition newPos = *pos;
+            uint64 hash = 0;
+            BitBoardUtils::MakeMove(&newPos, hash, newMoves[i]);
+
+            float curScore = -alphabeta<!chance>(&newPos, depth - 1, curPly + 1, -beta, -alpha);
+            if (curScore >= beta)
+            {
+                return beta;
+            }
+
+            if (curScore > alpha)
+            {
+                alpha = curScore;
+                bestChild = i;
+            }
+        }
+        searched = nMoves;
+
+        nMoves += BitBoardUtils::generateNonCaptures<chance>(pos, &newMoves[nMoves]);   // then rest of the moves
+    }
+
 
     // special case: Check if it's checkmate or stalemate
     if (nMoves == 0)
     {
-        if (BitBoardUtils::IsInCheck(pos))
+        if (inCheck)
         {
             return - ((float) INF/MAX_GAME_LENGTH) * depth;
         }
@@ -112,12 +175,14 @@ float Game::alphabeta(HexaBitBoardPosition *pos, int depth, int curPly, float al
         }
     }
 
-    float bestScore = -INF;
-    int bestChild = 0;
-    
-    for (int i = 0; i < nMoves; i++)
+   
+    for (int i = searched; i < nMoves; i++)
     {
-        float curScore = -alphabeta(&newPositions[i], depth - 1, curPly + 1, -beta, -alpha);
+        HexaBitBoardPosition newPos = *pos;
+        uint64 hash = 0;
+        BitBoardUtils::MakeMove(&newPos, hash, newMoves[i]);
+
+        float curScore = -alphabeta<!chance>(&newPos, depth - 1, curPly + 1, -beta, -alpha);
         if (curScore >= beta)
         {
             return beta;
@@ -130,8 +195,8 @@ float Game::alphabeta(HexaBitBoardPosition *pos, int depth, int curPly, float al
         }
     }
 
-    // this is wrong.. TODO: Ankan - fis this.
-    pv[depth] = bestChild;
+    // this is wrong.. TODO: Ankan - fix this.
+    pv[depth] = newMoves[bestChild];
 
     return alpha;
 }
@@ -147,11 +212,14 @@ void Game::StartSearch()
 
     for (int depth = 1; depth < maxSearchDepth; depth++)
     {
-        float eval = alphabeta(&pos, depth, plyNo + 1, -INF, INF);
 
-        CMove allMoves[MAX_MOVES];
-        BitBoardUtils::GenerateMoves(&pos, allMoves);
-        CMove currentDepthBest = allMoves[pv[depth]];
+        float eval = 0;
+        if (pos.chance == WHITE)
+            eval = alphabeta<WHITE>(&pos, depth, plyNo + 1, -INF, INF);
+        else
+            eval = alphabeta<BLACK>(&pos, depth, plyNo + 1, -INF, INF);
+
+        CMove currentDepthBest = pv[depth];
 
         // TODO: update bestmove inside a critical section?
         bestMove = currentDepthBest;
@@ -162,8 +230,12 @@ void Game::StartSearch()
         {
             nps /= timeElapsed;    // time is in ms
         }
-        printf("info depth %d score cp %d nodes %llu nps %llu currmove ", depth, (int) eval, nodes, nps);
-        Utils::displayCompactMove(bestMove);
+        printf("info depth %d score cp %d nodes %llu time %llu nps %llu pv ", depth, (int) eval, nodes, timeElapsed, nps);
+        for (int i = depth; i > 0; i--)
+        {
+            Utils::displayCompactMove(pv[i]);
+        }
+        printf("\n");
         fflush(stdout);
 
         // TODO: better time management
@@ -196,7 +268,7 @@ uint64 Game::perft(HexaBitBoardPosition *pos, int depth)
     nMoves = BitBoardUtils::GenerateBoards(pos, newPositions);
     uint64 count = 0;
 
-    for (uint32 i = 0; i < nMoves; i++)
+    for (int i = 0; i < nMoves; i++)
     {
         uint64 childPerft = perft(&newPositions[i], depth - 1);
         count += childPerft;
@@ -206,7 +278,82 @@ uint64 Game::perft(HexaBitBoardPosition *pos, int depth)
 }
 
 
+// tester perft routine
+// check if ordered (MVV-LVA) move gen is working
+
+// MVV-LVA move generation is 2.5X slower than regular move gen
+// regular without bulk counting: start pos: 243 million nps, pos2: 367 million nps
+// MVV-LVA without bulk counting: start pos:  96 million nps, pos2: 150 million nps
+template<uint8 chance>
+uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
+{
+    CMove genMoves[MAX_MOVES];
+    int nMoves = 0;
+    /*
+    if (depth == 1)
+    {
+        nMoves = BitBoardUtils::countMoves<chance>(pos);
+        return (uint64)nMoves;
+    }
+    */
+
+    if (BitBoardUtils::IsInCheck(pos))
+    {
+        uint64 allPawns = pos->pawns & RANKS2TO7;
+        uint64 allPieces = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
+        uint64 blackPieces = allPieces & (~pos->whitePieces);
+
+        uint64 myPieces = (chance == WHITE) ? pos->whitePieces : blackPieces;
+        uint64 enemyPieces = (chance == WHITE) ? blackPieces : pos->whitePieces;
+
+        uint64 enemyBishops = pos->bishopQueens & enemyPieces;
+        uint64 enemyRooks = pos->rookQueens & enemyPieces;
+
+        uint64 myKing = pos->kings & myPieces;
+        uint8  kingIndex = BitBoardUtils::bitScan(myKing);
+
+        uint64 pinned = BitBoardUtils::findPinnedPieces(pos->kings & myPieces, myPieces, enemyBishops, enemyRooks, allPieces, kingIndex);
+
+        uint64 threatened = BitBoardUtils::findAttackedSquares(~allPieces, enemyBishops, enemyRooks, allPawns & enemyPieces,
+                                                               pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
+
+        nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(pos, genMoves, allPawns, allPieces, myPieces, enemyPieces, pinned, threatened, kingIndex);
+    }
+    else
+    {
+        // TODO: see if refactoring out common code (e.g, find pinned, threatened, etc) can improve performance significantly?
+        // have a structure - ExpandedBitboardPosition containing - all mypieces, enemypieces, mypawns, enemypawns, ... pinned, threatened, etc... and pass the structure around
+        nMoves = BitBoardUtils::generateCaptures<chance>(pos, genMoves);
+        nMoves += BitBoardUtils::generateNonCaptures<chance>(pos, &genMoves[nMoves]);
+    }
+
+    if (depth == 1)
+        return (uint64) nMoves;
+
+    uint64 count = 0;
+
+    for (uint32 i = 0; i < nMoves; i++)
+    {
+        HexaBitBoardPosition newPos = *pos;
+        uint64 hash = 0;
+        BitBoardUtils::makeMove<chance>(&newPos, hash, genMoves[i]);
+
+        uint64 childPerft = perft_test<!chance>(&newPos, depth - 1);
+        count += childPerft;
+    }
+
+    return count;
+}
+
+
+
 uint64 Game::Perft(int depth)
 {
     return perft(&pos, depth);
+    /*
+    if (pos.chance == WHITE)
+        return perft_test<WHITE>(&pos, depth);
+    else
+        return perft_test<BLACK>(&pos, depth);
+    */
 }

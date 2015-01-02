@@ -358,7 +358,7 @@ void Utils::displayMoveBB(Move move)
     */
     // seperator not allowed in uci protocol
     // TODO: also handle promotion-capture moves correctly?
-    sprintf(dispString, "%c%d%c%d \n",
+    sprintf(dispString, "%c%d%c%d ",
         c1 + 'a',
         r1,
         c2 + 'a',
