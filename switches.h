@@ -34,3 +34,6 @@
 // use byte lookup for fancy magics (~150 KB lookup tables)
 // >10% slower than fixed shift fancy magics on both CPU and GPU
 #define USE_BYTE_LOOKUP_FANCY 0
+
+
+#define INCREMENTAL_ZOBRIST_UPDATE 1

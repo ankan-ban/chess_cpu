@@ -18,6 +18,7 @@ int Game::maxSearchDepth;
 
 CMove Game::bestMove;
 CMove Game::pv[MAX_GAME_LENGTH];
+int   Game::pvLen;
 
 uint64 Game::nodes;
 
@@ -70,7 +71,6 @@ void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int bi
     }
 }
 
-
 void Game::StartSearch()
 {
     searching = true;
@@ -82,15 +82,13 @@ void Game::StartSearch()
     for (int depth = 1; depth < maxSearchDepth; depth++)
     {
 
-        float eval = 0;
+        int16 eval = 0;
         if (pos.chance == WHITE)
-            eval = alphabeta<WHITE>(&pos, depth, plyNo + 1, -INF, INF);
+            eval = alphabetaRoot<WHITE>(&pos, depth, plyNo + 1);
         else
-            eval = alphabeta<BLACK>(&pos, depth, plyNo + 1, -INF, INF);
+            eval = alphabetaRoot<BLACK>(&pos, depth, plyNo + 1);
 
-        CMove currentDepthBest = pv[depth];
-
-        bestMove = currentDepthBest;
+        GetPVFromTT(&pos);
 
         uint64 timeElapsed = timer.stop();
         uint64 nps = nodes * 1000;
@@ -102,10 +100,10 @@ void Game::StartSearch()
         bool foundMate = false; // don't waste anymore time if we already found a mate
 
         // print mate score correctly
-        if (abs(eval) >= MATE_SCORE_BASE)
+        if (abs(eval) >= MATE_SCORE_BASE/2)
         {
             foundMate = true;
-            int mateDepth = (int)(abs(eval) / MATE_SCORE_BASE - MAX_GAME_LENGTH);
+            int16 mateDepth = abs(eval) - MATE_SCORE_BASE;
 
             // convert the depth to be relative to current position (distance from mate)
             mateDepth = (depth - mateDepth);
@@ -124,7 +122,7 @@ void Game::StartSearch()
         }
 
         // display the PV (TODO: currently the PV is wrong after second move)
-        for (int i = depth; i > 0; i--)
+        for (int i = 0; i < pvLen; i++)
         {
             Utils::displayCompactMove(pv[i]);
         }

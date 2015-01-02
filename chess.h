@@ -15,9 +15,14 @@ typedef unsigned char      uint8;
 typedef unsigned short     uint16;
 typedef unsigned int       uint32;
 typedef unsigned long long uint64;
+
+typedef char               int8;
+typedef short              int16;
+typedef int                int32;
+typedef long long          int64;
 typedef long long          int64;
 
-#define INF   1000000000
+#define INF   32767
 
 #define HI(x) ((uint32)((x)>>32))
 #define LO(x) ((uint32)(x))
@@ -228,6 +233,7 @@ public:
     unsigned int getTo()    const { return (m_Move >> 6) & 0x3F; }
     unsigned int getFrom()  const { return (m_Move)& 0x3F; }
     unsigned int getFlags() const { return (m_Move >> 12) & 0x0F; }
+    bool isValid()          const { return m_Move != 0; }
 
     bool operator == (CMove a) const { return (m_Move == a.m_Move); }
     bool operator != (CMove a) const { return (m_Move != a.m_Move); }
@@ -295,7 +301,7 @@ code	promotion	capture	special 1	special 0	kind of move
 // e.g, test this FEN string "3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk w - - 0 1"
 #define MAX_MOVES 256
 #define MAX_GAME_LENGTH 1024
-#define MATE_SCORE_BASE 65536.0f
+#define MATE_SCORE_BASE 16384
 
 // max no of moves possible by a single piece
 // actually it's 27 for a queen when it's in the center of the board
@@ -433,6 +439,9 @@ private:
     // the principal variation for the current search
     static CMove pv[MAX_GAME_LENGTH];
 
+    // length of available PV
+    static int pvLen;
+
     // to detect repetitions (and avoid/cause draw based on it)
     // plyNo is relative to the position provided in "position" uci command
     static uint64 posHashes[MAX_GAME_LENGTH];
@@ -442,11 +451,15 @@ private:
 
     // perform alpha-beta search on the given position
     template<uint8 chance>
-    static float alphabeta(HexaBitBoardPosition *pos, int depth, int ply, float alpha, float beta);
+    static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta);
+
+    template<uint8 chance>
+    static int16 alphabetaRoot(HexaBitBoardPosition *pos, int depth, int ply);
+
 
     // perform q-search
     template<uint8 chance>
-    static float q_search(HexaBitBoardPosition *pos, int depth, float alpha, float beta);
+    static int16 q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta);
 
     static uint64 perft(HexaBitBoardPosition *pos, int depth);
 
@@ -472,6 +485,9 @@ public:
     // start search (called from a different thread)
     // returns when we run out of time (or if terminiated from main thread)
     static void StartSearch();
+
+    // compute the PV from transposition table
+    static void GetPVFromTT(HexaBitBoardPosition *pos);
 
     // get the best move resulting from the last (or ongoing) search
     static CMove GetBestMove()                                      { return bestMove; }
@@ -532,6 +548,59 @@ struct ExpandedBitBoard
     uint8  enPassent;
     uint8  whiteCastle;
     uint8  blackCastle;
+};
+
+#define SCORE_EXACT    0
+#define SCORE_GE       1
+#define SCORE_LE       2
+
+// transposition table entry
+struct TTEntry
+{
+    union
+    {
+        uint64 hashKey;
+        struct
+        {
+            // 8 LSB's are not important as the hash table size is at least > 256 entries
+
+            // TODO at least 16 bits can be easily re-used for storing something else. Find more info that can be stored here.
+            uint16 free1;
+            uint8 hashPart[6];  // most significant bits of the hash key
+        };
+    };                      // 64 bits
+
+    union
+    {
+        uint64 otherInfo;
+        struct
+        {
+            CMove  bestMove;        // 16 bits
+            int16  score;           // 16 bits
+            uint8  scoreType;       // 8 bits       // this can be clubbed inside score and we can get 8 more bits of free space if needed
+            uint8  depth;           // 8 bits
+            uint16 age;             // more free space that can be used for something more useful!
+        };
+    };
+};
+
+
+// 256 MB is default TT size
+#define DEAFULT_TT_SIZE (256*1024*1024)
+
+class TranspositionTable
+{
+private:
+    static TTEntry *TT;        // the transposition table
+    static uint64  size;       // size in elements
+    static int     indexBits;  // size-1
+public:
+    static void  init(int byteSize = 268435456);
+    static void  destroy();
+    static void  reset();
+
+    static bool  lookup(uint64 hash, TTEntry *entry, int depth);
+    static void  update(uint64 hash, TTEntry *entry);
 };
 
 class BitBoardUtils
@@ -730,7 +799,7 @@ private:
                                             uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves);
 
     // core functions
-    static float getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const float table[]);
+    static int16 getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const int16 table[]);
 
 public:
     template<uint8 chance>
@@ -775,7 +844,7 @@ public:
     static void MakeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
 
     // evaluate a board position
-    static float Evaluate(HexaBitBoardPosition *pos);
+    static int16 Evaluate(HexaBitBoardPosition *pos);
 
     // compute zobrist hash key for the given board position
     static uint64 ComputeZobristKey(HexaBitBoardPosition *pos);

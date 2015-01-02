@@ -107,6 +107,7 @@ void UciInterface::ProcessCommands()
         {
             // new game
             Game::Reset();
+            TranspositionTable::reset();
         }
         else if (strstr(input, "uci")) 
         {
@@ -117,6 +118,7 @@ void UciInterface::ProcessCommands()
             printf("id author Ankan Banerjee\n\n");
             fflush(stdout);
             BitBoardUtils::init();
+            TranspositionTable::init();
 
             // send the "uciok" command
             printf("uciok\n");
@@ -193,6 +195,7 @@ void UciInterface::ProcessCommands()
                 worker_thread = NULL;
             }
 #endif
+            TranspositionTable::destroy();
             return;
         }
         else if (strstr(input, "dispboard")) 

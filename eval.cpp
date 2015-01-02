@@ -19,7 +19,7 @@
 #define PAWN_MATERIAL_VAL   100
 
 // piece-square tables - from black's point of view and then from white's pov
-const float squareEvalPawn[] =
+const int16 squareEvalPawn[] =
 {
      0,  0,  0,  0,  0,  0,  0,  0,
     50, 50, 50, 50, 50, 50, 50, 50,
@@ -40,7 +40,7 @@ const float squareEvalPawn[] =
      0,  0,  0,  0,  0,  0,  0,  0,
 };
 
-const float squareEvalKnight[] =
+const int16 squareEvalKnight[] =
 {
     -50,-40,-30,-30,-30,-30,-40,-50,
     -40,-20,  0,  0,  0,  0,-20,-40,
@@ -61,7 +61,7 @@ const float squareEvalKnight[] =
     -50,-40,-30,-30,-30,-30,-40,-50,
 };
 
-const float squareEvalBishop[] =
+const int16 squareEvalBishop[] =
 {
     -20,-10,-10,-10,-10,-10,-10,-20,
     -10,  0,  0,  0,  0,  0,  0,-10,
@@ -82,7 +82,7 @@ const float squareEvalBishop[] =
     -20,-10,-10,-10,-10,-10,-10,-20,
 };
 
-const float squareEvalRook[] =
+const int16 squareEvalRook[] =
 {
       0,  0,  0,  0,  0,  0,  0,  0,
       5, 10, 10, 10, 10, 10, 10,  5,
@@ -103,7 +103,7 @@ const float squareEvalRook[] =
       0,  0,  0,  0,  0,  0,  0,  0,
 };
 
-const float squareEvalQueen[] =
+const int16 squareEvalQueen[] =
 {
     -20,-10,-10, -5, -5,-10,-10,-20,
     -10,  0,  0,  0,  0,  0,  0,-10,
@@ -125,7 +125,7 @@ const float squareEvalQueen[] =
     -20,-10,-10, -5, -5,-10,-10,-20,
 };
 
-const float squareEvalKingMid[] =
+const int16 squareEvalKingMid[] =
 {
     -30,-40,-40,-50,-50,-40,-40,-30,
     -30,-40,-40,-50,-50,-40,-40,-30,
@@ -146,7 +146,7 @@ const float squareEvalKingMid[] =
     -30,-40,-40,-50,-50,-40,-40,-30,
 };
 
-const float squareEvalKingEnd[] =
+const int16 squareEvalKingEnd[] =
 {
     -50,-40,-30,-20,-20,-30,-40,-50,
     -30,-20,-10,  0,  0,-10,-20,-30,
@@ -168,9 +168,9 @@ const float squareEvalKingEnd[] =
 };
 
 
-float BitBoardUtils::getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const float table[])
+int16 BitBoardUtils::getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const int16 table[])
 {
-    float val = 0;
+    int16 val = 0;
     while (pieceSet)
     {
         uint64 piece = getOne(pieceSet);
@@ -189,7 +189,7 @@ float BitBoardUtils::getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const
 }
 
 // call templated version (on chance) of the function internally?
-float BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
+int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
 {
     uint64 allPawns = pos->pawns & RANKS2TO7;    // get rid of game state variables
     uint64 allPieces = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
@@ -209,7 +209,7 @@ float BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     uint64 whiteBishops = allBishops  & whitePieces;
 
     // material eval
-    float material = 0;
+    int16 material = 0;
 
     material += (2.0f * popCount(whiteQueens)  - popCount(allQueens))  * QUEEN_MATERIAL_VAL;
     material += (2.0f * popCount(whiteRooks)   - popCount(allRooks))   * ROOK_MATERIAL_VAL;
@@ -219,7 +219,7 @@ float BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
 
     // positional eval (using piece square tables)
     // maybe use two tables - for white and black pieces?
-    float positional = 0;
+    int16 positional = 0;
 
     positional += getPieceSquareScore(allPawns,   whitePieces, squareEvalPawn);
     positional += getPieceSquareScore(allKnights, whitePieces, squareEvalKnight);
@@ -245,13 +245,16 @@ float BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
         positional += getPieceSquareScore(pos->kings, whitePieces, squareEvalKingMid);
     }
 
-    float finalEval = material + positional;
+    int16 finalEval = material + positional;
 
     // we computed everything when viewed from white's side, reverse the sign if it's black's chance
     if (pos->chance == BLACK)
     {
         finalEval = -finalEval;
     }
+
+    // Hack: never return an eval that has LSB set
+    finalEval = finalEval & 0xFFFE;
 
     return finalEval;
 }
