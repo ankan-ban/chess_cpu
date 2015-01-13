@@ -451,7 +451,7 @@ private:
 
     // perform alpha-beta search on the given position
     template<uint8 chance>
-    static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta);
+    static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta, bool tryNullMove);
 
     template<uint8 chance>
     static int16 alphabetaRoot(HexaBitBoardPosition *pos, int depth, int ply);
@@ -605,12 +605,12 @@ public:
 
 class BitBoardUtils
 {
-private:
+public:
     // set of random numbers for zobrist hashing
     static ZobristRandoms zob;
+private:
 
     // various lookup tables used for move generation
-
     // bit mask containing squares between two given squares
     static uint64 Between[64][64];
 

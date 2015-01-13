@@ -67,9 +67,9 @@ int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 be
 
 // negamax forumlation of alpha-beta search
 template<uint8 chance>
-int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta)
+int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool allowNullMove)
 {
-    if (depth == 0)
+    if (depth <= 0)
     {
         nodes++;
         //return BitBoardUtils::Evaluate(pos);
@@ -88,6 +88,39 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             return 0;   // draw by repetition
         }
     }
+
+
+    ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
+    bool inCheck = !!(bb.threatened & bb.myKing);
+
+    // try null move
+    
+    // the reduction factor (no of plies we save by doing null move search first)
+    int R = DEFAULT_NULL_MOVE_REDUCTION;
+
+    // TODO: more checks to avoid dangerous positions
+    if (allowNullMove &&                                                    // avoid doing null move twice in a row
+        !inCheck &&                                                         // can't do null move when in check
+        depth > R &&                                                        // can't do near horizon
+        BitBoardUtils::countMoves<chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE)  // avoid when there are very few valid moves
+    {
+
+        if (depth >= MIN_DEPTH_FOR_EXTRA_REDUCTION)
+        {
+            R = EXTRA_NULL_MOVE_REDUCTION;
+        }
+
+        // make null move
+        pos->chance = !pos->chance;
+        uint64 newHash = hash ^ BitBoardUtils::zob.chance;
+        int16 nullMoveScore = -alphabeta<!chance>(pos, newHash, depth - 1 - R, curPly + 1, -beta, -beta + 1, false);
+
+        // undo null move
+        pos->chance = !pos->chance;
+
+        if (nullMoveScore >= beta) return nullMoveScore;
+    }
+    
 
 
     // lookup in the transposition table
@@ -136,7 +169,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             uint64 newHash = hash;
             BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
             if (curScore >= beta)
             {
                 ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore;
@@ -159,11 +192,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
     }
 
-    ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
-
     int searched = 0;
 
-    bool inCheck = !!(bb.threatened & bb.myKing);
 
     // generate child nodes
     CMove newMoves[MAX_MOVES];
@@ -186,7 +216,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
                 uint64 newHash = hash;
                 BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
                 if (curScore >= beta)
                 {
                     ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore; ttEntry.bestMove = newMoves[i];
@@ -241,7 +271,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             uint64 newHash = hash;
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
             if (curScore >= beta)
             {
                 ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore; ttEntry.bestMove = newMoves[i];
@@ -339,7 +369,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
             uint64 newHash = posHash;
             BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
 
             if (curScore > alpha)
             {
@@ -375,7 +405,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                 uint64 newHash = posHash;
                 BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
 
                 if (curScore > alpha)
                 {
@@ -398,7 +428,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
             uint64 newHash = posHash;
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha);
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
 
             if (curScore > alpha)
             {
@@ -421,8 +451,8 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
 
 
 
-template int16 Game::alphabeta<WHITE>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta);
-template int16 Game::alphabeta<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta);
+template int16 Game::alphabeta<WHITE>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove);
+template int16 Game::alphabeta<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove);
 
 
 template int16 Game::alphabetaRoot<WHITE>(HexaBitBoardPosition *pos, int depth, int curPly);

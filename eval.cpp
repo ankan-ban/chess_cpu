@@ -211,11 +211,11 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     // material eval
     int16 material = 0;
 
-    material += (2.0f * popCount(whiteQueens)  - popCount(allQueens))  * QUEEN_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteRooks)   - popCount(allRooks))   * ROOK_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteBishops) - popCount(allBishops)) * BISHOP_MATERIAL_VAL;
-    material += (2.0f * popCount(whiteKnights) - popCount(allKnights)) * KNIGHT_MATERIAL_VAL;
-    material += (2.0f * popCount(whitePawns)   - popCount(allPawns))   * PAWN_MATERIAL_VAL;
+    material += (2 * popCount(whiteQueens)  - popCount(allQueens))  * QUEEN_MATERIAL_VAL;
+    material += (2 * popCount(whiteRooks)   - popCount(allRooks))   * ROOK_MATERIAL_VAL;
+    material += (2 * popCount(whiteBishops) - popCount(allBishops)) * BISHOP_MATERIAL_VAL;
+    material += (2 * popCount(whiteKnights) - popCount(allKnights)) * KNIGHT_MATERIAL_VAL;
+    material += (2 * popCount(whitePawns)   - popCount(allPawns))   * PAWN_MATERIAL_VAL;
 
     // positional eval (using piece square tables)
     // maybe use two tables - for white and black pieces?

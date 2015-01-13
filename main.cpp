@@ -98,11 +98,14 @@ void Game::StartSearch()
         }
 
         bool foundMate = false; // don't waste anymore time if we already found a mate
+        if (abs(eval) >= MATE_SCORE_BASE)
+        {
+            foundMate = true;
+        }
 
         // print mate score correctly
         if (abs(eval) >= MATE_SCORE_BASE/2)
         {
-            foundMate = true;
             int16 mateDepth = abs(eval) - MATE_SCORE_BASE;
 
             // convert the depth to be relative to current position (distance from mate)
