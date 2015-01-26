@@ -425,6 +425,9 @@ public:
 class Game
 {
 private:
+    // timer to check how much time is remaining and elapsed
+    static Timer timer;
+
     // the current board position
     static HexaBitBoardPosition pos;
 
@@ -549,6 +552,29 @@ struct ExpandedBitBoard
     uint8  whiteCastle;
     uint8  blackCastle;
 };
+
+// another expanded bit board structure used by evaluation function
+struct EvalBitBoard
+{
+    uint64 allPieces;
+    uint64 whitePieces;
+    uint64 blackPieces;
+
+    uint64 whitePawns;
+    uint64 whiteKing;
+    uint64 whiteKnights;
+    uint64 whiteBishops;
+    uint64 whiteRooks;
+    uint64 whiteQueens;
+
+    uint64 blackPawns;
+    uint64 blackKing;
+    uint64 blackKnights;
+    uint64 blackBishops;
+    uint64 blackRooks;
+    uint64 blackQueens;
+};
+
 
 #define SCORE_EXACT    0
 #define SCORE_GE       1
@@ -801,6 +827,9 @@ private:
     // core functions
     static int16 getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const int16 table[]);
 
+    // evaluate mobility
+    static int16 evaluateMobility(const EvalBitBoard &ebb, bool endGame);
+
 public:
     template<uint8 chance>
     static void makeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
@@ -811,14 +840,22 @@ public:
     template<uint8 chance>
     static int countMoves(HexaBitBoardPosition *pos);
 
+    // generate captures AND promotions
     template<uint8 chance>
     static int generateCaptures(const ExpandedBitBoard *bb, CMove *genMoves);
 
+    // generate moves that are not captures OR promotions
     template<uint8 chance>
     static int generateNonCaptures(const ExpandedBitBoard *bb, CMove *genMoves);
 
+    // generate moves for evading checks (called only when the side to move is in check)
     template<uint8 chance>
     static int generateMovesOutOfCheck(const ExpandedBitBoard *bb, CMove *genMoves);
+
+    // generate moves giving check to the opponent side
+    // used only by q-search
+    template<uint8 chance>
+    static int generateMovesCausingCheck(const ExpandedBitBoard *bb, CMove *genMoves);
 
 public:
     // unpack the bitboard structure

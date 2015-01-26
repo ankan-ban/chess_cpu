@@ -1,9 +1,16 @@
 #include "chess.h"
 
+
+// good page on quiescent-search
+// http://web.archive.org/web/20040427014440/brucemo.com/compchess/programming/quiescent.htm#MVVLVA
+
 // Quiescence search
 template<uint8 chance>
 int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta)
 {
+
+    nodes++;    // node count is the no. of nodes on which Evaluation function is called
+
     int16 currentMax = -INF;
 
     // check current position
@@ -69,11 +76,8 @@ int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 be
 template<uint8 chance>
 int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool allowNullMove)
 {
-    if (depth <= 0)
+    if (depth == 0)
     {
-        nodes++;
-        //return BitBoardUtils::Evaluate(pos);
-
         int16 qSearchVal = q_search<chance>(pos, depth, alpha, beta);
         return qSearchVal;
     }
@@ -89,7 +93,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
-
+    // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
     bool inCheck = !!(bb.threatened & bb.myKing);
 
@@ -104,6 +108,17 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         depth > R &&                                                        // can't do near horizon
         BitBoardUtils::countMoves<chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE)  // avoid when there are very few valid moves
     {
+
+        // Buggy!! - fix this
+        // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
+        /*
+        uint64 timeElapsed = timer.stop();
+        if (timeElapsed > (searchTime / 1.01f))
+        {
+            // would this cause hash table corruption?
+            return beta;
+        }
+        */
 
         if (depth >= MIN_DEPTH_FOR_EXTRA_REDUCTION)
         {
@@ -124,7 +139,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
 
     // lookup in the transposition table
-    TTEntry ttEntry;
+    TTEntry ttEntry = {};
     bool foundInTT = TranspositionTable::lookup(hash, &ttEntry, depth);
     if (foundInTT && ttEntry.depth >= depth)
     {
@@ -293,7 +308,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
-    // default node type is ALL node and the score returned in a upper bound on the score of the node
+    // default node type is ALL node and the score returned is a upper bound on the score of the node
     ttEntry.score = currentMax; 
     ttEntry.bestMove = currentBestMove;
 
@@ -348,13 +363,12 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
     posHashes[curPly] = posHash;
 
     // lookup in the transposition table
-    TTEntry ttEntry;
+    TTEntry ttEntry = {};
     bool foundInTT = TranspositionTable::lookup(posHash, &ttEntry, depth);
 
     ttEntry.hashKey = posHash;
     ttEntry.age = plyNo;
     ttEntry.depth = depth;
-
 
     // check hash move first
     CMove currentBestMove = {};
@@ -489,9 +503,12 @@ void  TranspositionTable::reset()
 
 bool TranspositionTable::lookup(uint64 hash, TTEntry *entry, int depth)
 {
-    *entry = TT[hash & indexBits];
-    if (entry->hashKey == hash)
+    TTEntry fromTT = TT[hash & indexBits];
+    if (fromTT.hashKey == hash)
     {
+        *entry = fromTT;
+
+        // convert distance to mate to absolute score for mates
         if (abs(entry->score) >= MATE_SCORE_BASE/2)
         {
             if (entry->score < 0)

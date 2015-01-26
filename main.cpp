@@ -24,6 +24,7 @@ uint64 Game::nodes;
 
 uint64 Game::posHashes[MAX_GAME_LENGTH];
 int Game::plyNo;
+Timer Game::timer;
 
 
 volatile bool Game::searching;
@@ -76,7 +77,6 @@ void Game::StartSearch()
     searching = true;
     nodes = 0;
 
-    Timer timer;
     timer.start();
 
     for (int depth = 1; depth < maxSearchDepth; depth++)
@@ -191,34 +191,17 @@ uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
     }
     */
 
-    if (BitBoardUtils::IsInCheck(pos))
+    ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
+    bool inCheck = !!(bb.threatened & bb.myKing);
+
+    if (inCheck)
     {
-        uint64 allPawns = pos->pawns & RANKS2TO7;
-        uint64 allPieces = pos->kings | allPawns | pos->knights | pos->bishopQueens | pos->rookQueens;
-        uint64 blackPieces = allPieces & (~pos->whitePieces);
-
-        uint64 myPieces = (chance == WHITE) ? pos->whitePieces : blackPieces;
-        uint64 enemyPieces = (chance == WHITE) ? blackPieces : pos->whitePieces;
-
-        uint64 enemyBishops = pos->bishopQueens & enemyPieces;
-        uint64 enemyRooks = pos->rookQueens & enemyPieces;
-
-        uint64 myKing = pos->kings & myPieces;
-        uint8  kingIndex = BitBoardUtils::bitScan(myKing);
-
-        uint64 pinned = BitBoardUtils::findPinnedPieces(pos->kings & myPieces, myPieces, enemyBishops, enemyRooks, allPieces, kingIndex);
-
-        uint64 threatened = BitBoardUtils::findAttackedSquares(~allPieces, enemyBishops, enemyRooks, allPawns & enemyPieces,
-                                                               pos->knights & enemyPieces, pos->kings & enemyPieces, myKing, !chance);
-
-        nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(pos, genMoves, allPawns, allPieces, myPieces, enemyPieces, pinned, threatened, kingIndex);
+        nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(&bb, genMoves);
     }
     else
     {
-        // TODO: see if refactoring out common code (e.g, find pinned, threatened, etc) can improve performance significantly?
-        // have a structure - ExpandedBitboardPosition containing - all mypieces, enemypieces, mypawns, enemypawns, ... pinned, threatened, etc... and pass the structure around
-        nMoves = BitBoardUtils::generateCaptures<chance>(pos, genMoves);
-        nMoves += BitBoardUtils::generateNonCaptures<chance>(pos, &genMoves[nMoves]);
+        nMoves = BitBoardUtils::generateCaptures<chance>(&bb, genMoves);
+        nMoves += BitBoardUtils::generateNonCaptures<chance>(&bb, &genMoves[nMoves]);
     }
 
     if (depth == 1)
@@ -244,10 +227,12 @@ uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
 uint64 Game::Perft(int depth)
 {
     return perft(&pos, depth);
+    
     /*
     if (pos.chance == WHITE)
         return perft_test<WHITE>(&pos, depth);
     else
         return perft_test<BLACK>(&pos, depth);
     */
+    
 }

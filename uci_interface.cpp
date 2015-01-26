@@ -205,6 +205,10 @@ void UciInterface::ProcessCommands()
             Game::GetPos(&pos);
             Utils::boardHexBBTo088(&temp, &pos);
             Utils::dispBoard(&temp);
+            uint64 hash = BitBoardUtils::ComputeZobristKey(&pos);
+            uint32 high = (uint32) (hash >> 32);
+            uint32 low  = (uint32)  (hash & 0xFFFFFFFF);
+            printf("\nHash: 0x%X%X\n", high, low);
         }
         else if (strstr(input, "go")) 
         {

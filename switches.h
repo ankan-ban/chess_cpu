@@ -38,6 +38,7 @@
 
 #define INCREMENTAL_ZOBRIST_UPDATE 1
 
+// null move pruning related constants
 #define DEFAULT_NULL_MOVE_REDUCTION 2
 #define EXTRA_NULL_MOVE_REDUCTION 3
 #define MIN_DEPTH_FOR_EXTRA_REDUCTION 8
