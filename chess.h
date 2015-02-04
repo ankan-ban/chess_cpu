@@ -378,6 +378,7 @@ public:
     // displays the board in human readable form
     static void dispBoard(char board[8][8]);
     static void dispBoard(BoardPosition088 *pos);
+    static void dispBoard(HexaBitBoardPosition *pos);
 
     // displays a move in human readable form
     static void displayMove(Move move);
@@ -462,7 +463,7 @@ private:
 
     // perform q-search
     template<uint8 chance>
-    static int16 q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta);
+    static int16 q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 alpha, int16 beta, int curPly);
 
     static uint64 perft(HexaBitBoardPosition *pos, int depth);
 
@@ -588,7 +589,7 @@ struct TTEntry
         uint64 hashKey;
         struct
         {
-            // 8 LSB's are not important as the hash table size is at least > 256 entries
+            // 16 LSB's are not important as the hash table size is at least > 64k entries
 
             // TODO at least 16 bits can be easily re-used for storing something else. Find more info that can be stored here.
             uint16 free1;
@@ -605,14 +606,66 @@ struct TTEntry
             int16  score;           // 16 bits
             uint8  scoreType;       // 8 bits       // this can be clubbed inside score and we can get 8 more bits of free space if needed
             uint8  depth;           // 8 bits
-            uint16 age;             // more free space that can be used for something more useful!
+            uint16 age;             
         };
     };
 };
 
+// two entries per slot
+// deepest and most recent
+struct DualTTEntry
+{
+    union 
+    {
+        uint64 hashKey;
+        struct
+        {
+            CMove bestMove;     // best move found
+            uint8 hashPart[6];  // most significant bits of the hash key
+        };
+    } deepest; // 64 bits
+
+    union
+    {
+        uint64 hashKey;
+        struct
+        {
+            CMove bestMove;
+            uint8 hashPart[6];  // most significant bits of the hash key
+        };
+    } mostRecent; // 64 bits
+
+    union
+    {
+        uint64 otherInfo;
+        struct
+        {
+            int16  scoreDeepest;            // 16 bits
+            uint8  scoreTypeDeepest : 2;    // 2 bits
+            uint8  ageDeepest       : 6;    // 6 bits
+            uint8  depthDeepest;            // 8 bits
+
+            int16  scoreMostRecent;                 // 16 bits
+            uint8  scoreTypescoreMostRecent : 2;    // 2 bits
+            uint8  agescoreMostRecent : 6;          // 6 bits
+            uint8  depthscoreMostRecent;            // 8 bits
+        };
+    };
+
+};
+CT_ASSERT(sizeof(DualTTEntry) == 24);
 
 // 256 MB is default TT size
 #define DEAFULT_TT_SIZE (256*1024*1024)
+
+// size of q-search TT, (2 MB)
+#define Q_TT_SIZE_BITS  18
+#define Q_TT_ELEMENTS   (1 << Q_TT_SIZE_BITS)
+#define Q_TT_INDEX_BITS (Q_TT_ELEMENTS - 1)
+#define Q_TT_HASH_BITS  (0xFFFFFFFFFFFFFFFFull ^ Q_TT_INDEX_BITS)
+
+// index bits should be large enough to hold score and score type (score type is 2 bits)
+CT_ASSERT(Q_TT_SIZE_BITS >= sizeof(int16) + 2);
 
 class TranspositionTable
 {
@@ -620,6 +673,9 @@ private:
     static TTEntry *TT;        // the transposition table
     static uint64  size;       // size in elements
     static int     indexBits;  // size-1
+
+
+    static uint64  *qTT;       // a small TT dedicated for q-search
 public:
     static void  init(int byteSize = 268435456);
     static void  destroy();
@@ -627,6 +683,9 @@ public:
 
     static bool  lookup(uint64 hash, TTEntry *entry, int depth);
     static void  update(uint64 hash, TTEntry *entry);
+
+    static bool  lookup_q(uint64 hash, int16 *eval, uint8 *type);
+    static void  update_q(uint64 hash, int16  eval, uint8  type);
 };
 
 class BitBoardUtils
@@ -779,7 +838,7 @@ private:
     static uint64 sqsInLine(uint8 sq1, uint8 sq2);
 
     static void updateCastleFlag(HexaBitBoardPosition *pos, uint64 dst, uint8 chance);
-    __forceinline static uint64 findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
+    __forceinline static uint64 findPinnedPieces(uint64 myKing, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
     __forceinline static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
                                                     uint64 enemyKing, uint64 myKing, uint8 enemyColor);
 private:

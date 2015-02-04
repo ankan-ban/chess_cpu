@@ -43,3 +43,12 @@
 #define EXTRA_NULL_MOVE_REDUCTION 3
 #define MIN_DEPTH_FOR_EXTRA_REDUCTION 8
 #define MIN_MOVES_FOR_NULL_MOVE 4
+
+// check extensions (seems to weaken the engine - maybe makes it significantly slow?)
+#define CHECK_EXTENSIONS 0
+
+// use a small (2 MB) Transposition table for q-search
+// doesn't seem to help much (or at all ?)
+#define USE_Q_TT 1
+
+#define MIN_DEPTH_FOR_IID 5

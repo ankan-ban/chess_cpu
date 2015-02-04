@@ -256,6 +256,12 @@ void Utils::boardHexBBTo088(BoardPosition088 *pos088, HexaBitBoardPosition *posB
     pos088->halfMoveCounter = posBB->halfMoveCounter;
 }
 
+void Utils::dispBoard(HexaBitBoardPosition *pos)
+{
+    BoardPosition088 board;
+    boardHexBBTo088(&board, pos);
+    dispBoard(&board);
+}
 
 void Utils::dispBoard(BoardPosition088 *pos)
 {

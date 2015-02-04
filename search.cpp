@@ -6,10 +6,26 @@
 
 // Quiescence search
 template<uint8 chance>
-int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta)
+int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 alpha, int16 beta, int curPly)
 {
 
     nodes++;    // node count is the no. of nodes on which Evaluation function is called
+
+    bool improvedAlpha = false;
+
+    int16 evalFromTT;
+    uint8 scoreType;
+    if (TranspositionTable::lookup_q(hash, &evalFromTT, &scoreType))
+    {
+        if (scoreType == SCORE_EXACT)
+        {
+            return evalFromTT;
+        }
+        if (scoreType == SCORE_GE && evalFromTT >= beta)
+        {
+            return evalFromTT;
+        }
+    }
 
     int16 currentMax = -INF;
 
@@ -17,11 +33,22 @@ int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 be
     int16 stand_pat = BitBoardUtils::Evaluate(pos);
     
     if (stand_pat >= beta)
+    {
+        TranspositionTable::update_q(hash, stand_pat, SCORE_GE);
         return stand_pat;
+    }
+
+#if CHECK_EXTENSIONS == 1
+    // to detect infinite check->check evasion loops
+    posHashes[curPly] = hash;
+#endif
 
     currentMax = stand_pat;
     if (currentMax > alpha)
+    {
         alpha = currentMax;
+        improvedAlpha = true;
+    }
 
 
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
@@ -35,28 +62,29 @@ int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 be
         nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(&bb, newMoves);
 
         if (nMoves == 0) // mate!
+        {
+            TranspositionTable::update_q(hash, -MATE_SCORE_BASE, SCORE_EXACT);   // TODO: this might cause problems ?
             return -(MATE_SCORE_BASE + depth);
+        }
     }
     else
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
-
-        if (nMoves == 0) // no more captures
-            return currentMax;
     }
 
     for (int i = 0; i < nMoves; i++)
     {
         HexaBitBoardPosition newPos = *pos;
-        uint64 hash = 0;
+        uint64 newhash = hash;
 
         // TODO: prune out bad captures (check out SEE and delta pruning!)
 
-        BitBoardUtils::MakeMove(&newPos, hash, newMoves[i]);
+        BitBoardUtils::MakeMove(&newPos, newhash, newMoves[i]);
 
-        int16 curScore = -q_search<!chance>(&newPos, depth - 1, -beta, -alpha);
+        int16 curScore = -q_search<!chance>(&newPos, newhash, depth - 1, -beta, -alpha, curPly + 1);
         if (curScore >= beta)
         {
+            TranspositionTable::update_q(hash, curScore, SCORE_GE);
             return curScore;
         }
 
@@ -64,10 +92,60 @@ int16 Game::q_search(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 be
         {
             currentMax = curScore;
             if (currentMax > alpha)
+            {
                 alpha = currentMax;
+                improvedAlpha = true;
+            }
         }
     }
 
+#if CHECK_EXTENSIONS == 1
+    // check extensions: try moves that would put opponent side in check
+    if (!inCheck)
+    {
+        // avoid stack overflow due to repeated checks and check evasions
+        // TODO: no need to search so many plies - reset the counter whenever a capture is made
+        for (int i = 0; i < curPly; i++)
+        {
+            if (posHashes[i] == hash)
+            {
+                return 0;   // draw by repetition
+            }
+        }
+
+        nMoves = BitBoardUtils::generateMovesCausingCheck<chance>(&bb, newMoves);
+
+        for (int i = 0; i < nMoves; i++)
+        {
+            HexaBitBoardPosition newPos = *pos;
+            uint64 newhash = hash;
+
+            BitBoardUtils::MakeMove(&newPos, newhash, newMoves[i]);
+
+            int16 curScore = -q_search<!chance>(&newPos, newhash, depth - 1, -beta, -alpha, curPly + 1);
+            if (curScore >= beta)
+            {
+                TranspositionTable::update_q(hash, curScore, SCORE_GE);
+                return curScore;
+            }
+
+            if (curScore > currentMax)
+            {
+                currentMax = curScore;
+                if (currentMax > alpha)
+                {
+                    alpha = currentMax;
+                    improvedAlpha = true;
+                }
+            }
+        }
+    }
+#endif
+
+    if (improvedAlpha)
+    {
+        TranspositionTable::update_q(hash, currentMax, SCORE_EXACT);
+    }
     return currentMax;
 }
 
@@ -78,7 +156,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 {
     if (depth == 0)
     {
-        int16 qSearchVal = q_search<chance>(pos, depth, alpha, beta);
+        int16 qSearchVal = q_search<chance>(pos, hash, depth, alpha, beta, curPly);
         return qSearchVal;
     }
 
@@ -95,6 +173,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
     // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
+
     bool inCheck = !!(bb.threatened & bb.myKing);
 
     // try null move
@@ -126,12 +205,24 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
 
         // make null move
+
+        // 1. reverse the chance
         pos->chance = !pos->chance;
         uint64 newHash = hash ^ BitBoardUtils::zob.chance;
+
+        // 2. clear en-passent flag if set
+        uint8 ep = pos->enPassent;
+        pos->enPassent = 0;
+        if (ep)
+        {
+            newHash ^= BitBoardUtils::zob.enPassentTarget[ep - 1];
+        }
+
         int16 nullMoveScore = -alphabeta<!chance>(pos, newHash, depth - 1 - R, curPly + 1, -beta, -beta + 1, false);
 
         // undo null move
         pos->chance = !pos->chance;
+        pos->enPassent = ep;
 
         if (nullMoveScore >= beta) return nullMoveScore;
     }
@@ -161,6 +252,28 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             return ttEntry.score;
         }
     }
+
+
+    // Internal iterative deepening
+    // good discussion here:
+    // http://www.open-aurec.com/wbforum/viewtopic.php?f=4&t=4698
+    if (depth >= MIN_DEPTH_FOR_IID)
+    {
+        int iidStartDepth = 1;
+        if (foundInTT)
+        {
+            iidStartDepth = ttEntry.depth + 1;
+        }
+        for (int i = iidStartDepth; i < depth; i++)
+        {
+            alphabeta<chance>(pos, hash, i, curPly, alpha, beta, allowNullMove);
+            // TODO: can we make better use of the return value ?
+        }
+
+        // again query the TT (to get updated value)
+        foundInTT = TranspositionTable::lookup(hash, &ttEntry, depth);
+    }
+
 
     ttEntry.hashKey = hash;
     ttEntry.age = plyNo;
@@ -472,8 +585,8 @@ template int16 Game::alphabeta<BLACK>(HexaBitBoardPosition *pos, uint64 hash, in
 template int16 Game::alphabetaRoot<WHITE>(HexaBitBoardPosition *pos, int depth, int curPly);
 template int16 Game::alphabetaRoot<BLACK>(HexaBitBoardPosition *pos, int depth, int curPly);
 
-template int16 Game::q_search<WHITE>(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta);
-template int16 Game::q_search<BLACK>(HexaBitBoardPosition *pos, int depth, int16 alpha, int16 beta);
+template int16 Game::q_search<WHITE>(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 alpha, int16 beta, int curPly);
+template int16 Game::q_search<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 alpha, int16 beta, int curPly);
 
 
 
@@ -483,22 +596,29 @@ TTEntry* TranspositionTable::TT;         // the transposition table
 uint64   TranspositionTable::size;       // in elements
 int      TranspositionTable::indexBits;  // bits of hash key used for the index part in hash table (size-1)
 
+uint64* TranspositionTable::qTT;         // transposition table for q-search
+
 void  TranspositionTable::init(int byteSize)
 {
     size  = byteSize / sizeof(TTEntry);
     indexBits = size - 1;
     TT = (TTEntry *) malloc(byteSize);
+
+    qTT = (uint64 *) malloc(sizeof(uint64) * Q_TT_ELEMENTS);
+
     reset();
 }
 
 void  TranspositionTable::destroy()
 {
     free (TT);
+    free(qTT);
 }
 
 void  TranspositionTable::reset()
 {
     memset(TT, 0, size * sizeof(TTEntry));
+    memset(qTT, 0, Q_TT_ELEMENTS * sizeof(uint64));
 }
 
 bool TranspositionTable::lookup(uint64 hash, TTEntry *entry, int depth)
@@ -545,4 +665,32 @@ void TranspositionTable::update(uint64 hash, TTEntry *entry)
     {
         TT[hash & indexBits] = *entry;
     }
+}
+
+
+
+bool TranspositionTable::lookup_q(uint64 hash, int16 *eval, uint8 *scoreType)
+{
+#if USE_Q_TT == 1
+    uint64 fromTT = qTT[hash & Q_TT_INDEX_BITS];
+
+    if ((fromTT & Q_TT_HASH_BITS) == (hash & Q_TT_HASH_BITS))
+    {
+        uint32 retVal = fromTT & Q_TT_INDEX_BITS;
+        *eval = (retVal & 0xFFFF);
+        *scoreType = ((retVal >> 16) & 0x3);
+
+        return true;
+    }
+#endif
+    return false;
+}
+
+void  TranspositionTable::update_q(uint64 hash, int16 eval, uint8 scoreType)
+{
+#if USE_Q_TT == 1
+    uint32 storedval = (eval & 0xFFFF) | ((scoreType << 16) & 0x30000);
+    uint64 toTT = (hash & Q_TT_HASH_BITS) | (storedval & Q_TT_INDEX_BITS);
+    qTT[hash & Q_TT_INDEX_BITS] = toTT;
+#endif
 }

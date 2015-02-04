@@ -178,6 +178,12 @@ uint64 Game::perft(HexaBitBoardPosition *pos, int depth)
 // MVV-LVA move generation is 2.5X slower than regular move gen
 // regular without bulk counting: start pos: 243 million nps, pos2: 367 million nps
 // MVV-LVA without bulk counting: start pos:  96 million nps, pos2: 150 million nps
+
+// also test if generateMovesCausingCheck is working
+
+// TODO: perft 5 of pos3 of cpw is wrong! 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -
+// The bug happens if we split perft into captures and non-captures. No such problem with plain old perft
+
 template<uint8 chance>
 uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
 {
@@ -200,8 +206,39 @@ uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
     }
     else
     {
+        // captures
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, genMoves);
-        nMoves += BitBoardUtils::generateNonCaptures<chance>(&bb, &genMoves[nMoves]);
+
+        // checks
+        int checkCount = BitBoardUtils::generateMovesCausingCheck<chance>(&bb, &genMoves[nMoves]);
+        nMoves += checkCount;
+
+        // rest
+        CMove tempMoves[MAX_MOVES];
+        int allNonCaptures = BitBoardUtils::generateNonCaptures<chance>(&bb, tempMoves);
+        // filter out checks
+        int checks = 0;
+        for (int i = 0; i < allNonCaptures; i++)
+        {
+            HexaBitBoardPosition newPos = *pos;
+            uint64 hash = 0;
+            BitBoardUtils::makeMove<chance>(&newPos, hash, tempMoves[i]);
+            if (!BitBoardUtils::IsInCheck(&newPos))
+            {
+                genMoves[nMoves++] = tempMoves[i];
+            }
+            else
+            {
+                checks++;
+            }
+        }
+
+        if (checkCount != checks)
+        {
+            printf("\nFound mismatch in check count, found %d, actual %d\n", checkCount, checks);
+            Utils::dispBoard(pos);
+        }
+
     }
 
     if (depth == 1)
@@ -226,13 +263,12 @@ uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
 
 uint64 Game::Perft(int depth)
 {
-    return perft(&pos, depth);
+    //return perft(&pos, depth);
     
-    /*
+    
     if (pos.chance == WHITE)
         return perft_test<WHITE>(&pos, depth);
     else
         return perft_test<BLACK>(&pos, depth);
-    */
-    
+   
 }

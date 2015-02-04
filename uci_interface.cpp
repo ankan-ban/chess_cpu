@@ -200,11 +200,9 @@ void UciInterface::ProcessCommands()
         }
         else if (strstr(input, "dispboard")) 
         {
-            BoardPosition088 temp;
             HexaBitBoardPosition pos;
             Game::GetPos(&pos);
-            Utils::boardHexBBTo088(&temp, &pos);
-            Utils::dispBoard(&temp);
+            Utils::dispBoard(&pos);
             uint64 hash = BitBoardUtils::ComputeZobristKey(&pos);
             uint32 high = (uint32) (hash >> 32);
             uint32 low  = (uint32)  (hash & 0xFFFFFFFF);

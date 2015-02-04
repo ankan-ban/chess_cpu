@@ -832,7 +832,7 @@ void BitBoardUtils::updateCastleFlag(HexaBitBoardPosition *pos, uint64 dst, uint
 
 
 
-uint64 BitBoardUtils::findPinnedPieces(uint64 myKing, uint64 myPieces, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex)
+uint64 BitBoardUtils::findPinnedPieces(uint64 myKing, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex)
 {
     // check for sliding attacks to the king's square
 
@@ -1436,7 +1436,7 @@ ExpandedBitBoard BitBoardUtils::ExpandBitBoard(HexaBitBoardPosition *pos)
 
 
     op.threatened       = findAttackedSquares(~op.allPieces, op.enemyBishopQueens, op.enemyRookQueens, op.enemyPawns, op.enemyKnights, op.enemyKing, op.myKing, !chance);
-    op.pinned           = findPinnedPieces(op.myKing, op.myPieces, op.enemyBishopQueens, op.enemyRookQueens, op.allPieces, op.myKingIndex);
+    op.pinned           = findPinnedPieces(op.myKing, op.enemyBishopQueens, op.enemyRookQueens, op.allPieces, op.myKingIndex);
 
     op.enPassent        = pos->enPassent;
     op.whiteCastle      = pos->whiteCastle;
