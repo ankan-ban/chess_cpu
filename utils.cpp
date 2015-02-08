@@ -334,11 +334,56 @@ void Utils::displayMove(Move move)
 
 void Utils::displayCompactMove(CMove move)
 {
+#if 0
     Move move2;
     move2.capturedPiece = (move.getFlags() & CM_FLAG_CAPTURE);
     move2.src = move.getFrom();
     move2.dst = move.getTo();
     displayMoveBB(move2);
+#endif
+
+    char dispString[10];
+
+    uint8 src = move.getFrom();
+    uint8 dst = move.getTo();
+
+    uint8 r1, c1, r2, c2;
+    r1 = (src >> 3) + 1;
+    c1 = (src) & 0x7;
+
+    r2 = (dst >> 3) + 1;
+    c2 = (dst) & 0x7;
+
+    char promo;
+
+    if (move.getFlags() & CM_FLAG_PROMOTION)
+    {
+        if ((move.getFlags() & CM_FLAG_QUEEN_PROMOTION) == CM_FLAG_QUEEN_PROMOTION)
+            promo = 'q';
+        else if ((move.getFlags() & CM_FLAG_KNIGHT_PROMOTION) == CM_FLAG_KNIGHT_PROMOTION)
+            promo = 'n';
+        else if ((move.getFlags() & CM_FLAG_ROOK_PROMOTION) == CM_FLAG_ROOK_PROMOTION)
+            promo = 'r';
+        else if ((move.getFlags() & CM_FLAG_BISHOP_PROMOTION) == CM_FLAG_BISHOP_PROMOTION)
+            promo = 'b';
+
+        sprintf(dispString, "%c%d%c%d%c ",
+            c1 + 'a',
+            r1,
+            c2 + 'a',
+            r2,
+            promo);
+    }
+    else
+    {
+        sprintf(dispString, "%c%d%c%d ",
+            c1 + 'a',
+            r1,
+            c2 + 'a',
+            r2);
+    }
+    printf(dispString);
+
 }
 
 void Utils::displayMoveBB(Move move)

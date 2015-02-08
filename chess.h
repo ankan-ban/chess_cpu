@@ -451,6 +451,11 @@ private:
     static uint64 posHashes[MAX_GAME_LENGTH];
     static int    plyNo;
 
+    // a ref count of ir-reversible moves (*not* incremented during search)
+    // only incremented as the game progresses (when a move is actually made)
+    // used for transposition table ageing
+    static uint8  irreversibleMoveRefCount;
+
     static uint64 nodes;
 
     // perform alpha-beta search on the given position
@@ -473,6 +478,9 @@ private:
 public:
     // set hash for a previous board position (also update ply no)
     static void SetHashForPly(int ply, uint64 hash)                  { posHashes[ply] = hash; assert(ply >= plyNo); plyNo = ply; }
+
+    static void     SetIrReversibleRefCount(int counter)             { irreversibleMoveRefCount = (uint8)counter; }
+    static uint8    GetIrReversibleRefCount()                        { return irreversibleMoveRefCount; }
 
     // initialize/reset state for a new game
     static void Reset();
@@ -640,23 +648,23 @@ struct DualTTEntry
         uint64 otherInfo;
         struct
         {
-            int16  scoreDeepest;            // 16 bits
-            uint8  scoreTypeDeepest : 2;    // 2 bits
-            uint8  ageDeepest       : 6;    // 6 bits
-            uint8  depthDeepest;            // 8 bits
+            int16  scoreDeepest;                // 16 bits
+            int16  scoreMostRecent;             // 16 bits
 
-            int16  scoreMostRecent;                 // 16 bits
-            uint8  scoreTypescoreMostRecent : 2;    // 2 bits
-            uint8  agescoreMostRecent : 6;          // 6 bits
-            uint8  depthscoreMostRecent;            // 8 bits
+            uint8  scoreTypeDeepest : 2;        // 2 bits
+            uint8  scoreTypeMostRecent : 2;     // 2 bits
+
+            // 4 bits free here
+
+            uint8  depthDeepest;                // 8 bits
+            uint8  depthMostRecent;             // 8 bits
+
+            uint8  ageDeepest;                  // 8 bits
         };
     };
 
 };
 CT_ASSERT(sizeof(DualTTEntry) == 24);
-
-// 256 MB is default TT size
-#define DEAFULT_TT_SIZE (256*1024*1024)
 
 // size of q-search TT, (2 MB)
 #define Q_TT_SIZE_BITS  18
@@ -670,19 +678,23 @@ CT_ASSERT(Q_TT_SIZE_BITS >= sizeof(int16) + 2);
 class TranspositionTable
 {
 private:
+#if USE_DUAL_SLOT_TT == 1
+    static DualTTEntry *TT;
+#else
     static TTEntry *TT;        // the transposition table
+#endif
     static uint64  size;       // size in elements
-    static int     indexBits;  // size-1
-
+    static uint64  indexBits;  // size-1
+    static uint64  hashBits;   // ALLSET ^ indexBits;
 
     static uint64  *qTT;       // a small TT dedicated for q-search
 public:
-    static void  init(int byteSize = 268435456);
+    static void  init(int byteSize = DEAFULT_TT_SIZE);
     static void  destroy();
     static void  reset();
 
-    static bool  lookup(uint64 hash, TTEntry *entry, int depth);
-    static void  update(uint64 hash, TTEntry *entry);
+    static bool  lookup(uint64 hash, int searchDepth, int16 *score, uint8 *scoreType, int *foundDepth, CMove *bestMove);
+    static void  update(uint64 hash, int16 score, uint8 scoreType, CMove bestMove, int depth, int age);
 
     static bool  lookup_q(uint64 hash, int16 *eval, uint8 *type);
     static void  update_q(uint64 hash, int16  eval, uint8  type);
@@ -944,6 +956,9 @@ public:
 
     // compute zobrist hash key for the given board position
     static uint64 ComputeZobristKey(HexaBitBoardPosition *pos);
+
+    // returns if the the move made is ir-reversible or not (TODO: maybe we can just check CMove flags?)
+    static bool IsIrReversibleMove(HexaBitBoardPosition *pos, CMove move);
 
     static void init();
 };

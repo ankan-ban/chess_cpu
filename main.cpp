@@ -24,6 +24,7 @@ uint64 Game::nodes;
 
 uint64 Game::posHashes[MAX_GAME_LENGTH];
 int Game::plyNo;
+uint8 Game::irreversibleMoveRefCount;
 Timer Game::timer;
 
 
@@ -38,6 +39,7 @@ void Game::Reset()
     searchTime = 0;
     maxSearchDepth = MAX_GAME_LENGTH;
     plyNo = 0;
+    irreversibleMoveRefCount = 0;
 }
 
 void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int binc, int searchTimeExact)
@@ -246,7 +248,7 @@ uint64 Game::perft_test(HexaBitBoardPosition *pos, int depth)
 
     uint64 count = 0;
 
-    for (uint32 i = 0; i < nMoves; i++)
+    for (int i = 0; i < nMoves; i++)
     {
         HexaBitBoardPosition newPos = *pos;
         uint64 hash = 0;

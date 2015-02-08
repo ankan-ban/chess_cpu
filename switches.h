@@ -44,11 +44,27 @@
 #define MIN_DEPTH_FOR_EXTRA_REDUCTION 8
 #define MIN_MOVES_FOR_NULL_MOVE 4
 
-// check extensions (seems to weaken the engine - maybe makes it significantly slow?)
+// check extensions in q-search (seems to weaken the engine - maybe makes it significantly slow?)
 #define CHECK_EXTENSIONS 0
 
 // use a small (2 MB) Transposition table for q-search
 // doesn't seem to help much (or at all ?)
 #define USE_Q_TT 1
 
+// min depth to engage IID (internal iterative deepening)
+// using IID near horizon can cause lot of extra overhead
 #define MIN_DEPTH_FOR_IID 5
+
+// use dual slot Transposition table
+// every entry (of 192 bits/24 bytes) has one deepest and one most-recent slot
+#define USE_DUAL_SLOT_TT 1
+
+
+// 16 million slots is default TT size
+#if USE_DUAL_SLOT_TT == 1
+// 192 MB 
+#define DEAFULT_TT_SIZE (192*1024*1024)
+#else
+// 256 MB 
+#define DEAFULT_TT_SIZE (256*1024*1024)
+#endif

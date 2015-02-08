@@ -230,26 +230,29 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
 
     // lookup in the transposition table
-    TTEntry ttEntry = {};
-    bool foundInTT = TranspositionTable::lookup(hash, &ttEntry, depth);
-    if (foundInTT && ttEntry.depth >= depth)
+    int hashDepth = 0;
+    int16 hashScore = 0;
+    uint8 scoreType = 0;
+    CMove ttMove = {};
+    bool foundInTT = TranspositionTable::lookup(hash, depth, &hashScore, &scoreType, &hashDepth, &ttMove);
+    if (foundInTT && hashDepth >= depth)
     {
         // exact score at same or better depth => done, return TT value
-        if (ttEntry.scoreType == SCORE_EXACT)
+        if (scoreType == SCORE_EXACT)
         {
-            return ttEntry.score;
+            return hashScore;
         }
 
         // score at same or better depth causes beta cutoff - again return TT value
-        if (ttEntry.scoreType == SCORE_GE && ttEntry.score >= beta)
+        if (scoreType == SCORE_GE && hashScore >= beta)
         {
-            return ttEntry.score;
+            return hashScore;
         }
 
         // score causes alpha-cutoff
-        if (ttEntry.scoreType == SCORE_LE && ttEntry.score <= alpha)
+        if (scoreType == SCORE_LE && hashScore <= alpha)
         {
-            return ttEntry.score;
+            return hashScore;
         }
     }
 
@@ -259,25 +262,14 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     // http://www.open-aurec.com/wbforum/viewtopic.php?f=4&t=4698
     if (depth >= MIN_DEPTH_FOR_IID)
     {
-        int iidStartDepth = 1;
-        if (foundInTT)
+        if (hashDepth < depth - 1)
         {
-            iidStartDepth = ttEntry.depth + 1;
-        }
-        for (int i = iidStartDepth; i < depth; i++)
-        {
-            alphabeta<chance>(pos, hash, i, curPly, alpha, beta, allowNullMove);
-            // TODO: can we make better use of the return value ?
-        }
+            alphabeta<chance>(pos, hash, depth - 1, curPly, alpha, beta, allowNullMove);
 
-        // again query the TT (to get updated value)
-        foundInTT = TranspositionTable::lookup(hash, &ttEntry, depth);
+            // again query the TT (to get updated value)
+            foundInTT = TranspositionTable::lookup(hash, depth, &hashScore, &scoreType, &hashDepth, &ttMove);
+        }
     }
-
-
-    ttEntry.hashKey = hash;
-    ttEntry.age = plyNo;
-    ttEntry.depth = depth;
 
 
     int16 currentMax = -INF;
@@ -285,39 +277,26 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     bool improvedAlpha = false;
 
     // check hash move first
-    CMove currentBestMove = {};
-    CMove ttMove = {};
-    if (foundInTT)
+    CMove currentBestMove = ttMove;
+    if (ttMove.isValid())
     {
-        ttMove = ttEntry.bestMove;
+        HexaBitBoardPosition newPos = *pos;
+        uint64 newHash = hash;
+        BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-        if (ttMove.isValid())
+        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+        if (curScore >= beta)
         {
-            HexaBitBoardPosition newPos = *pos;
-            uint64 newHash = hash;
-            BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
-
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
-            if (curScore >= beta)
-            {
-                ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore;
-                TranspositionTable::update(hash, &ttEntry);
-                return curScore;
-            }
-
-            if (curScore > currentMax)
-            {
-                currentMax = curScore;
-                if (currentMax > alpha)
-                {
-                    alpha = currentMax;
-                    improvedAlpha = true;
-                }
-
-                currentBestMove = ttMove;
-            }
+            TranspositionTable::update(hash, curScore, SCORE_GE, currentBestMove, depth, curPly);
+            return curScore;
         }
 
+        currentMax = curScore;
+        if (currentMax > alpha)
+        {
+            alpha = currentMax;
+            improvedAlpha = true;
+        }
     }
 
     int searched = 0;
@@ -347,9 +326,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
                 int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
                 if (curScore >= beta)
                 {
-                    ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore; ttEntry.bestMove = newMoves[i];
-                    TranspositionTable::update(hash, &ttEntry);
-
+                    TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
                     return curScore;
                 }
 
@@ -377,15 +354,13 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     {
         if (inCheck)
         {
-            ttEntry.scoreType = SCORE_EXACT; ttEntry.score = -(MATE_SCORE_BASE + depth);
-            TranspositionTable::update(hash, &ttEntry);
-
-            return -(MATE_SCORE_BASE + depth);
+            int16 curScore = -(MATE_SCORE_BASE + depth);
+            TranspositionTable::update(hash, curScore, SCORE_EXACT, CMove(), depth, curPly);
+            return curScore;
         }
         else
         {
-            ttEntry.scoreType = SCORE_EXACT; ttEntry.score = 0;
-            TranspositionTable::update(hash, &ttEntry);
+            TranspositionTable::update(hash, 0, SCORE_EXACT, CMove(), depth, curPly);
             return 0;
         }
     }
@@ -402,8 +377,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
             if (curScore >= beta)
             {
-                ttEntry.scoreType = SCORE_GE; ttEntry.score = curScore; ttEntry.bestMove = newMoves[i];
-                TranspositionTable::update(hash, &ttEntry);
+                TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
                 return curScore;
             }
 
@@ -422,19 +396,16 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     }
 
     // default node type is ALL node and the score returned is a upper bound on the score of the node
-    ttEntry.score = currentMax; 
-    ttEntry.bestMove = currentBestMove;
-
     if (improvedAlpha)
     {
-        ttEntry.scoreType = SCORE_EXACT; 
+        scoreType = SCORE_EXACT; 
     }
     else
     {
         // ALL node
-        ttEntry.scoreType = SCORE_LE;
+        scoreType = SCORE_LE;
     }
-    TranspositionTable::update(hash, &ttEntry);
+    TranspositionTable::update(hash, currentMax, scoreType, currentBestMove, depth, curPly);
 
     return currentMax;
 }
@@ -448,9 +419,11 @@ void Game::GetPVFromTT(HexaBitBoardPosition *pos)
     {
         uint64 posHash = BitBoardUtils::ComputeZobristKey(&nextPos);
 
-        TTEntry ttEntry;
-        bool foundInTT = TranspositionTable::lookup(posHash, &ttEntry, 0);
-        CMove bestMove = ttEntry.bestMove;
+        CMove bestMove = {};
+        int16 score;
+        uint8 type;
+        int hashDepth;
+        bool foundInTT = TranspositionTable::lookup(posHash, 0, &score, &type, &hashDepth, &bestMove);
         if (foundInTT && bestMove.isValid())
         {
             pv[depth++] = bestMove;
@@ -476,36 +449,27 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
     posHashes[curPly] = posHash;
 
     // lookup in the transposition table
-    TTEntry ttEntry = {};
-    bool foundInTT = TranspositionTable::lookup(posHash, &ttEntry, depth);
-
-    ttEntry.hashKey = posHash;
-    ttEntry.age = plyNo;
-    ttEntry.depth = depth;
-
-    // check hash move first
-    CMove currentBestMove = {};
+    int hashDepth = 0;
+    int16 hashScore = 0;
+    uint8 scoreType = 0;
     CMove ttMove = {};
-    if (foundInTT)
+    bool foundInTT = TranspositionTable::lookup(posHash, depth, &hashScore, &scoreType, &hashDepth, &ttMove);
+
+    CMove currentBestMove = ttMove;
+    if (ttMove.isValid())
     {
-        ttMove = ttEntry.bestMove;
+        HexaBitBoardPosition newPos = *pos;
+        uint64 newHash = posHash;
+        BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-        if (ttMove.isValid())
+        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+
+        if (curScore > alpha)
         {
-            HexaBitBoardPosition newPos = *pos;
-            uint64 newHash = posHash;
-            BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
-
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
-
-            if (curScore > alpha)
-            {
-                alpha = curScore;
-                currentBestMove = ttMove;
-            }
+            alpha = curScore;
         }
-
     }
+
 
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
     int searched = 0;
@@ -565,11 +529,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
         }
     }
 
-    ttEntry.score = alpha;
-    ttEntry.bestMove = currentBestMove;
-    ttEntry.scoreType = SCORE_EXACT;
-
-    TranspositionTable::update(posHash, &ttEntry);
+    TranspositionTable::update(posHash, alpha, SCORE_EXACT, currentBestMove, depth, curPly);
 
     bestMove = currentBestMove;
 
@@ -592,17 +552,31 @@ template int16 Game::q_search<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int
 
 
 // transposition table related stuff
+#if USE_DUAL_SLOT_TT == 1
+DualTTEntry* TranspositionTable::TT;         // the transposition table
+#else
 TTEntry* TranspositionTable::TT;         // the transposition table
+#endif
 uint64   TranspositionTable::size;       // in elements
-int      TranspositionTable::indexBits;  // bits of hash key used for the index part in hash table (size-1)
+uint64   TranspositionTable::indexBits;  // bits of hash key used for the index part in hash table (size-1)
+uint64   TranspositionTable::hashBits;   // bits of hash key used for the hash part in hash table (size-1)
 
 uint64* TranspositionTable::qTT;         // transposition table for q-search
 
+
+#define ALLSET    0xFFFFFFFFFFFFFFFFull
 void  TranspositionTable::init(int byteSize)
 {
+#if USE_DUAL_SLOT_TT == 1
+    size  = byteSize / sizeof(DualTTEntry);
+    TT = (DualTTEntry *) malloc(byteSize);
+#else
     size  = byteSize / sizeof(TTEntry);
-    indexBits = size - 1;
     TT = (TTEntry *) malloc(byteSize);
+#endif
+
+    indexBits = size - 1;
+    hashBits  = ALLSET ^ indexBits;
 
     qTT = (uint64 *) malloc(sizeof(uint64) * Q_TT_ELEMENTS);
 
@@ -617,25 +591,71 @@ void  TranspositionTable::destroy()
 
 void  TranspositionTable::reset()
 {
+#if USE_DUAL_SLOT_TT == 1
+    memset(TT, 0, size * sizeof(DualTTEntry));
+#else
     memset(TT, 0, size * sizeof(TTEntry));
+#endif
     memset(qTT, 0, Q_TT_ELEMENTS * sizeof(uint64));
 }
 
-bool TranspositionTable::lookup(uint64 hash, TTEntry *entry, int depth)
+bool TranspositionTable::lookup(uint64 hash, int searchDepth, int16 *score, uint8 *scoreType, int *foundDepth, CMove *bestMove)
 {
-    TTEntry fromTT = TT[hash & indexBits];
-    if (fromTT.hashKey == hash)
-    {
-        *entry = fromTT;
+#if USE_DUAL_SLOT_TT == 1
 
-        // convert distance to mate to absolute score for mates
-        if (abs(entry->score) >= MATE_SCORE_BASE/2)
+    DualTTEntry *entry = &TT[hash & indexBits];
+
+    bool found = false;
+
+    // check deepest first and then most recent
+    if ((entry->deepest.hashKey & hashBits) == (hash & hashBits))
+    {
+        *score = entry->scoreDeepest;
+        *scoreType = entry->scoreTypeDeepest;
+        *foundDepth = entry->depthDeepest;
+        *bestMove = entry->deepest.bestMove;
+        found = true;
+    }
+    else if ((entry->mostRecent.hashKey & hashBits) == (hash & hashBits))
+    {
+        *score = entry->scoreMostRecent;
+        *scoreType = entry->scoreTypeMostRecent;
+        *foundDepth = entry->depthMostRecent;
+        *bestMove = entry->mostRecent.bestMove;
+        found = true;
+    }
+
+
+    if (found)
+    {
+        // adjust mate score
+        if (abs(*score) >= MATE_SCORE_BASE / 2)
         {
-            if (entry->score < 0)
-                entry->score = entry->score - depth;
+            if ((*score) < 0)
+                *score = (*score) - searchDepth;
             else
-                entry->score = entry->score + depth;
+                *score = (*score) + searchDepth;
         }
+    }
+
+    return found;
+#else
+    TTEntry entry = TT[hash & indexBits];
+    if (entry.hashKey == hash)
+    {
+        // convert distance to mate to absolute score for mates
+        if (abs(entry.score) >= MATE_SCORE_BASE/2)
+        {
+            if (entry.score < 0)
+                entry.score = entry.score - searchDepth;
+            else
+                entry.score = entry.score + searchDepth;
+        }
+
+        *score      = entry.score;
+        *scoreType  = entry.scoreType;
+        *foundDepth = entry.depth;
+        *bestMove   = entry.bestMove;
 
         return true;
     }
@@ -643,28 +663,62 @@ bool TranspositionTable::lookup(uint64 hash, TTEntry *entry, int depth)
     {
         return false;
     }
+#endif
 }
 
-void TranspositionTable::update(uint64 hash, TTEntry *entry)
+void TranspositionTable::update(uint64 hash, int16 score, uint8 scoreType, CMove bestMove, int depth, int age)
 {
-    // normally we return -(MATE_SCORE_BASE + depth);
-
     // hack: fix mate score. Always store mate as distance to mate from the current position
-    if (abs(entry->score) >= MATE_SCORE_BASE/2)
+    // normally we return -(MATE_SCORE_BASE + depth);
+    if (abs(score) >= MATE_SCORE_BASE/2)
     {
-        if (entry->score < 0)
-            entry->score = entry->score + entry->depth;
+        if (score < 0)
+            score = score + depth;
         else
-            entry->score = entry->score - entry->depth;
+            score = score - depth;
     }
+
+#if USE_DUAL_SLOT_TT == 1
+    DualTTEntry *entry = &TT[hash & indexBits];
+
+    // try putting it in deepest slot if possible
+    if (depth >= entry->depthDeepest ||                                     // either entry is deeper than what is stored
+        abs(Game::GetIrReversibleRefCount() - entry->ageDeepest) >= 2)      // or what is stored is too old (2 more more ir-reversible moves made)
+    {
+        entry->ageDeepest = Game::GetIrReversibleRefCount();
+        entry->depthDeepest = depth;
+        entry->scoreDeepest = score;
+        entry->scoreTypeDeepest = scoreType;
+        entry->deepest.hashKey  = hash;
+        entry->deepest.bestMove = bestMove;
+    }
+    else
+    {
+        // put it in most recent slot
+        entry->depthMostRecent = depth;
+        entry->scoreMostRecent = score;
+        entry->scoreTypeMostRecent = scoreType;
+        entry->mostRecent.hashKey = hash;
+        entry->mostRecent.bestMove = bestMove;
+    }
+#else
 
     // TODO: better replacement strategy
     TTEntry *oldentry = &TT[hash & indexBits];
-    if (entry->age - oldentry->age > 32 ||
-        entry->depth >= oldentry->depth)
+    if (age - oldentry->age > 32 ||
+        depth >= oldentry->depth)
     {
-        TT[hash & indexBits] = *entry;
+        TTEntry entry;
+        entry.age = age;
+        entry.bestMove = bestMove;
+        entry.depth = depth;
+        entry.hashKey = hash;
+        entry.score = score;
+        entry.scoreType = scoreType;
+
+        TT[hash & indexBits] = entry;
     }
+#endif
 }
 
 

@@ -1445,6 +1445,60 @@ ExpandedBitBoard BitBoardUtils::ExpandBitBoard(HexaBitBoardPosition *pos)
     return op;
 }
 
+bool BitBoardUtils::IsIrReversibleMove(HexaBitBoardPosition *pos, CMove move)
+{
+    uint64 src = BIT(move.getFrom());
+    uint64 dst = BIT(move.getTo());
+
+    // figure out the source piece
+    uint64 queens = pos->bishopQueens & pos->rookQueens;
+    uint8 piece = 0;
+    if (pos->kings & src)
+        piece = KING;
+    else if (pos->knights & src)
+        piece = KNIGHT;
+    else if ((pos->pawns & RANKS2TO7) & src)
+        piece = PAWN;
+    else if (queens & src)
+        piece = QUEEN;
+    else if (pos->bishopQueens & src)
+        piece = BISHOP;
+    else
+        piece = ROOK;
+
+
+    if (piece == PAWN)
+    {
+        return true;
+    }
+
+    uint8 dstPiece = 0;
+    // figure out destination piece
+    if (pos->kings & dst)
+        dstPiece = KING;
+    else if (pos->knights & dst)
+        dstPiece = KNIGHT;
+    else if ((pos->pawns & RANKS2TO7) & dst)
+        dstPiece = PAWN;
+    else if (queens & dst)
+        dstPiece = QUEEN;
+    else if (pos->bishopQueens & dst)
+        dstPiece = BISHOP;
+    else if (pos->rookQueens & dst)
+        dstPiece = ROOK;
+
+    if (dstPiece)
+    {
+        return true;
+    }
+
+    if (move.getFlags() == CM_FLAG_KING_CASTLE || move.getFlags() == CM_FLAG_QUEEN_CASTLE)
+    {
+        return true;
+    }
+
+    return false;
+}
 
 template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<WHITE>(HexaBitBoardPosition *pos);
 template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<BLACK>(HexaBitBoardPosition *pos);

@@ -152,13 +152,9 @@ void UciInterface::ProcessCommands()
             }
             Utils::board088ToHexBB(&pos, &temp);
 
-            nPlies = 0; //nMoves * 2; (we don't care about the moves that are not visible to us)
-            /*
-            if (pos.chance == BLACK)
-            {
-                nPlies++;
-            }
-            */
+            nPlies = 0; 
+            int moveRef = 0;
+
 
             // read the moves
             input = strstr(input, "moves");
@@ -176,6 +172,10 @@ void UciInterface::ProcessCommands()
 
                     // make the move to update the pos in the game
                     BitBoardUtils::MakeMove(&pos, zero, move);
+
+                    if (BitBoardUtils::IsIrReversibleMove(&pos, move))
+                        moveRef++;
+
                     input += mlen;
                     // ignore blank spaces
                     while (*input == ' ') input++;
@@ -183,6 +183,7 @@ void UciInterface::ProcessCommands()
                 }
             }
             Game::SetPos(&pos);
+            Game::SetIrReversibleRefCount(moveRef);
 
         }
         else if (strstr(input, "quit")) 
