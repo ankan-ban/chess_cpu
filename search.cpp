@@ -290,24 +290,10 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             // update killer move table if this was a non-capture move
             if (!(ttMove.getFlags() & CM_FLAG_CAPTURE))
             {
-                // TODO: add to the first slot
-
-                bool foundKiller = false;
-                for (int j = 0; j < MAX_KILLERS; j++)
+                if (killers[depth][0] != ttMove)
                 {
-                    if (killers[depth][j] == ttMove)
-                    {
-                        foundKiller = true;
-                        break;
-                    }
-                }
-
-                if (!foundKiller)
-                {
-                    for (int j = 1; j < MAX_KILLERS; j++)
-                        killers[depth][j] = killers[depth][j - 1];
+                    killers[depth][1] = killers[depth][0];
                     killers[depth][0] = ttMove;
-
                 }
             }
 
@@ -390,7 +376,9 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     }
 
     // try killers first
-    // also filter out killers and TT move from the list
+    // also filter out killers and TT move from the list 
+    // TODO: no need to generate non captures if we get a cutoff on trying killer moves
+    //       need a move validity checker routine
     for (int i = searched; i < nMoves; i++)
     {
         // filter TT moves
@@ -399,16 +387,9 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             newMoves[i] = CMove();
             continue;
         }
-        bool isKiller = false;
 
-        for (int j = 0; j < MAX_KILLERS; j++)
-        {
-            if (killers[depth][j] == newMoves[i])
-            {
-                isKiller = true;
-                break;
-            }
-        }
+        bool isKiller = (killers[depth][0] == newMoves[i]) || 
+                        (killers[depth][1] == newMoves[i]);
 
         if (isKiller)
         {
@@ -419,7 +400,13 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
             if (curScore >= beta)
             {
-                // TODO: increase priority of this killer
+                // increase priority of this killer
+                if (killers[depth][0] != newMoves[i])
+                {
+                    killers[depth][1] = killers[depth][0];
+                    killers[depth][0] = newMoves[i];
+                }
+
                 TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
                 return curScore;
             }
@@ -454,8 +441,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             if (curScore >= beta)
             {
                 // update killer table
-                for (int j = 1; j < MAX_KILLERS; j++)
-                    killers[depth][j] = killers[depth][j - 1];
+                killers[depth][1] = killers[depth][0];
                 killers[depth][0] = newMoves[i];
 
                 TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);

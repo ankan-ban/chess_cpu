@@ -461,6 +461,8 @@ private:
     // killer moves
     static CMove killers[MAX_GAME_LENGTH][MAX_KILLERS];
 
+    // the code assumes that there are only two killer moves
+    CT_ASSERT(MAX_KILLERS == 2);
 
     // perform alpha-beta search on the given position
     template<uint8 chance>
