@@ -266,7 +266,7 @@ void BitBoardUtils::addPawnMoves(int *nMoves, HexaBitBoardPosition **newPos, Hex
         newBoard.halfMoveCounter = 0;   // reset half move counter for pawn push
         updateCastleFlag(&newBoard, dst, chance);
 
-        // add the moves
+        // add the moves (TODO: add promotion to queen on top! - for better move ordering)
         // 1. promotion to knight
         newBoard.knights = pos->knights | dst;
         newBoard.bishopQueens = pos->bishopQueens & ~dst;

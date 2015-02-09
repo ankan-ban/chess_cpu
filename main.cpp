@@ -25,6 +25,9 @@ uint64 Game::nodes;
 uint64 Game::posHashes[MAX_GAME_LENGTH];
 int Game::plyNo;
 uint8 Game::irreversibleMoveRefCount;
+
+CMove Game::killers[MAX_GAME_LENGTH][MAX_KILLERS];
+
 Timer Game::timer;
 
 
@@ -36,6 +39,8 @@ void Game::Reset()
     memset(&pos, 0, sizeof(pos));
     memset(&bestMove, 0, sizeof(bestMove));
     memset(posHashes, 0, sizeof(posHashes));
+    memset(killers, 0, sizeof(killers));
+
     searchTime = 0;
     maxSearchDepth = MAX_GAME_LENGTH;
     plyNo = 0;

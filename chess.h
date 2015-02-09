@@ -458,6 +458,10 @@ private:
 
     static uint64 nodes;
 
+    // killer moves
+    static CMove killers[MAX_GAME_LENGTH][MAX_KILLERS];
+
+
     // perform alpha-beta search on the given position
     template<uint8 chance>
     static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta, bool tryNullMove);

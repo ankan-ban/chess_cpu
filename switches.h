@@ -68,3 +68,6 @@
 // 256 MB 
 #define DEAFULT_TT_SIZE (256*1024*1024)
 #endif
+
+// no of killer moves per level
+#define MAX_KILLERS 2

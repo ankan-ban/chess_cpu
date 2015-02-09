@@ -287,6 +287,30 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
         if (curScore >= beta)
         {
+            // update killer move table if this was a non-capture move
+            if (!(ttMove.getFlags() & CM_FLAG_CAPTURE))
+            {
+                // TODO: add to the first slot
+
+                bool foundKiller = false;
+                for (int j = 0; j < MAX_KILLERS; j++)
+                {
+                    if (killers[depth][j] == ttMove)
+                    {
+                        foundKiller = true;
+                        break;
+                    }
+                }
+
+                if (!foundKiller)
+                {
+                    for (int j = 1; j < MAX_KILLERS; j++)
+                        killers[depth][j] = killers[depth][j - 1];
+                    killers[depth][0] = ttMove;
+
+                }
+            }
+
             TranspositionTable::update(hash, curScore, SCORE_GE, currentBestMove, depth, curPly);
             return curScore;
         }
@@ -365,10 +389,28 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
-
+    // try killers first
+    // also filter out killers and TT move from the list
     for (int i = searched; i < nMoves; i++)
     {
-        if (newMoves[i] != ttMove)
+        // filter TT moves
+        if (newMoves[i] == ttMove)
+        {
+            newMoves[i] = CMove();
+            continue;
+        }
+        bool isKiller = false;
+
+        for (int j = 0; j < MAX_KILLERS; j++)
+        {
+            if (killers[depth][j] == newMoves[i])
+            {
+                isKiller = true;
+                break;
+            }
+        }
+
+        if (isKiller)
         {
             HexaBitBoardPosition newPos = *pos;
             uint64 newHash = hash;
@@ -377,6 +419,45 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
             if (curScore >= beta)
             {
+                // TODO: increase priority of this killer
+                TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
+                return curScore;
+            }
+
+            if (curScore > currentMax)
+            {
+                currentMax = curScore;
+                if (currentMax > alpha)
+                {
+                    alpha = currentMax;
+                    improvedAlpha = true;
+                }
+
+                currentBestMove = newMoves[i];
+            }
+
+            // filter out killers
+            newMoves[i] = CMove();
+        }
+    }
+
+    // try remaining moves (non capture, non TT and non-killer)
+    for (int i = searched; i < nMoves; i++)
+    {
+        if (newMoves[i].isValid())
+        {
+            HexaBitBoardPosition newPos = *pos;
+            uint64 newHash = hash;
+            BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
+
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            if (curScore >= beta)
+            {
+                // update killer table
+                for (int j = 1; j < MAX_KILLERS; j++)
+                    killers[depth][j] = killers[depth][j - 1];
+                killers[depth][0] = newMoves[i];
+
                 TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
                 return curScore;
             }
