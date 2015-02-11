@@ -8,8 +8,11 @@
 #include "timer.h"
 
 
-//#include <assert.h>
+#if _DEBUG
+#include <assert.h>
+#else
 #define assert(x)
+#endif
 
 typedef unsigned char      uint8;
 typedef unsigned short     uint16;
@@ -300,6 +303,7 @@ code	promotion	capture	special 1	special 0	kind of move
 // max no of moves possible for a given board position (this can be as large as 218 ?)
 // e.g, test this FEN string "3Q4/1Q4Q1/4Q3/2Q4R/Q4Q2/3Q4/1Q4Rp/1K1BBNNk w - - 0 1"
 #define MAX_MOVES 256
+#define MAX_SEARCH_LENGTH 128
 #define MAX_GAME_LENGTH 1024
 #define MATE_SCORE_BASE 16384
 
@@ -485,7 +489,7 @@ public:
     // set hash for a previous board position (also update ply no)
     static void SetHashForPly(int ply, uint64 hash)                  { posHashes[ply] = hash; assert(ply >= plyNo); plyNo = ply; }
 
-    static void     SetIrReversibleRefCount(int counter)             { irreversibleMoveRefCount = (uint8)counter; }
+    static void     SetIrReversibleRefCount(int counter)             { irreversibleMoveRefCount = (uint8)counter; printf("\nrefcount: %d\n", counter);  }
     static uint8    GetIrReversibleRefCount()                        { return irreversibleMoveRefCount; }
 
     // initialize/reset state for a new game
@@ -959,6 +963,9 @@ public:
 
     // evaluate a board position
     static int16 Evaluate(HexaBitBoardPosition *pos);
+
+    // evaluate if the position is a draw
+    static bool isDrawn(ExpandedBitBoard const &bb);
 
     // compute zobrist hash key for the given board position
     static uint64 ComputeZobristKey(HexaBitBoardPosition *pos);

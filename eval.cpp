@@ -8,11 +8,14 @@
 // Ankan - TODO: experiment with this and tune it further!
 
 // all values in centi-pawns
-#define QUEEN_MATERIAL_VAL  900
+// taken from https://home.comcast.net/~danheisman/Articles/evaluation_of_material_imbalance.htm
+#define QUEEN_MATERIAL_VAL  975
 #define ROOK_MATERIAL_VAL   500
-#define BISHOP_MATERIAL_VAL 330
-#define KNIGHT_MATERIAL_VAL 320
+#define BISHOP_MATERIAL_VAL 325
+#define KNIGHT_MATERIAL_VAL 325
 #define PAWN_MATERIAL_VAL   100
+
+#define BISHOP_PAIR_VAL      50
 
 // 5 centipawn bonus for every extra legal move
 #define MOBILITY_FACTOR       5
@@ -417,6 +420,12 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     material += (popCount(ebb.whiteKnights) - popCount(ebb.blackKnights)) * KNIGHT_MATERIAL_VAL;
     material += (popCount(ebb.whitePawns)   - popCount(ebb.blackPawns))   * PAWN_MATERIAL_VAL;
 
+
+    if (popCount(ebb.whiteBishops) == 2)
+        material += BISHOP_PAIR_VAL;
+    if (popCount(ebb.blackBishops) == 2)
+        material -= BISHOP_PAIR_VAL;
+
     // positional eval (using piece square tables)
     // maybe use two tables - for white and black pieces?
     int16 positional = 0;
@@ -454,6 +463,20 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
 
     int16 finalEval = material + positional + mobility;
 
+
+    // evaluate basic draws
+    if ((popCount(ebb.whitePieces) == 2) && (finalEval > 0))
+    {
+        if (ebb.whiteBishops | ebb.whiteKnights)
+            finalEval = 0;
+    }
+    else if ((popCount(ebb.blackPieces) == 2) && (finalEval < 0))
+    {
+        if (ebb.blackBishops | ebb.blackKnights)
+            finalEval = 0;
+    }
+
+
     // we computed everything when viewed from white's side, reverse the sign if it's black's chance
     if (pos->chance == BLACK)
     {
@@ -470,4 +493,42 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     return finalEval;
 }
 
+bool BitBoardUtils::isDrawn(ExpandedBitBoard const &bb)
+{
+    int numPiecesOnBoard = BitBoardUtils::popCount(bb.allPieces);
+    if (numPiecesOnBoard <= 4)
+    {
+        // two kings
+        if (numPiecesOnBoard == 2)
+        {
+            return true;
+        }
 
+        int numMyPieces = BitBoardUtils::popCount(bb.myPieces);
+        int numEnemyPieces = BitBoardUtils::popCount(bb.enemyPieces);
+
+        uint64 queens = bb.bishopQueens & bb.rookQueens;
+        uint64 bishops = bb.bishopQueens ^ queens;
+        uint64 knights = bb.knights;
+
+        // each side with one minor piece and king
+        if ((numMyPieces == 2) && (numEnemyPieces == 2))
+        {
+            if (BitBoardUtils::popCount(bishops | knights) == 2)
+            {
+                return true;
+            }
+        }
+        // one side has only the king and other one minor piece + king
+        else if ((numMyPieces == 2) || (numEnemyPieces == 2))
+        {
+            assert(numPiecesOnBoard == 3);
+            if ((bishops | knights))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}

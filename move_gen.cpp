@@ -1309,9 +1309,9 @@ void BitBoardUtils::generateLVACapturesForSquare(uint64 square, uint64 pinned, u
     // pawn captures
 
     uint64 pawn = ((chance == WHITE) ? southWestOne(square) : northWestOne(square));
-    uint8 pawnIndex = bitScan(pawn);
     if (pawn & myPawns)
     {
+        uint8 pawnIndex = bitScan(pawn);
         if (pinned & pawn)
         {
             uint64 line = sqsInLine(pawnIndex, kingIndex);
@@ -1327,9 +1327,9 @@ void BitBoardUtils::generateLVACapturesForSquare(uint64 square, uint64 pinned, u
     }
 
     pawn = ((chance == WHITE) ? southEastOne(square) : northEastOne(square));
-    pawnIndex = bitScan(pawn);
     if (pawn & myPawns)
     {
+        uint8 pawnIndex = bitScan(pawn);
         if (pinned & pawn)
         {
             uint64 line = sqsInLine(pawnIndex, kingIndex);

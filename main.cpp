@@ -42,7 +42,7 @@ void Game::Reset()
     memset(killers, 0, sizeof(killers));
 
     searchTime = 0;
-    maxSearchDepth = MAX_GAME_LENGTH;
+    maxSearchDepth = MAX_SEARCH_LENGTH;
     plyNo = 0;
     irreversibleMoveRefCount = 0;
 }

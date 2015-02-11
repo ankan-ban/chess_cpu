@@ -174,6 +174,12 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
 
+    // detect basic draws (insufficient material)
+    if (BitBoardUtils::isDrawn(bb))
+    {
+        return 0;
+    }
+
     bool inCheck = !!(bb.threatened & bb.myKing);
 
     // try null move
@@ -187,17 +193,6 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         depth > R &&                                                        // can't do near horizon
         BitBoardUtils::countMoves<chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE)  // avoid when there are very few valid moves
     {
-
-        // Buggy!! - fix this
-        // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
-        /*
-        uint64 timeElapsed = timer.stop();
-        if (timeElapsed > (searchTime / 1.01f))
-        {
-            // would this cause hash table corruption?
-            return beta;
-        }
-        */
 
         if (depth >= MIN_DEPTH_FOR_EXTRA_REDUCTION)
         {
@@ -570,6 +565,15 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                     alpha = curScore;
                     currentBestMove = newMoves[i];
                 }
+
+                // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
+                uint64 timeElapsed = timer.stop();
+                if (timeElapsed > (searchTime / 1.01f))
+                {
+                    TranspositionTable::update(posHash, alpha, SCORE_GE, currentBestMove, depth, curPly);
+                    bestMove = currentBestMove;
+                    return alpha;
+                }
             }
         }
         searched = nMoves;
@@ -593,6 +597,16 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                 alpha = curScore;
                 currentBestMove = newMoves[i];
             }
+
+            // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
+            uint64 timeElapsed = timer.stop();
+            if (timeElapsed > (searchTime / 1.01f))
+            {
+                TranspositionTable::update(posHash, alpha, SCORE_GE, currentBestMove, depth, curPly);
+                bestMove = currentBestMove;
+                return alpha;
+            }
+
         }
     }
 

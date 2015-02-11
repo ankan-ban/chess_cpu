@@ -7,7 +7,7 @@ void UciInterface::Search_Go(char *params)
 
     // time in milliseconds remaining for white and black (for movestogo moves)
     int wtime = 0, btime = 0;
-    long movestogo = 0;
+    long movestogo = 40;
 
     // increments (per move) for white and black
     int winc = 0, binc = 0;
@@ -168,13 +168,13 @@ void UciInterface::ProcessCommands()
 
                     CMove move;
                     int mlen = Utils::readMove(input, &pos, &move);
-                    uint64 zero;
-
-                    // make the move to update the pos in the game
-                    BitBoardUtils::MakeMove(&pos, zero, move);
 
                     if (BitBoardUtils::IsIrReversibleMove(&pos, move))
                         moveRef++;
+
+                    uint64 zero;
+                    // make the move to update the pos in the game
+                    BitBoardUtils::MakeMove(&pos, zero, move);
 
                     input += mlen;
                     // ignore blank spaces
