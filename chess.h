@@ -233,10 +233,15 @@ public:
         m_Move = 0;
     }
 
+    CMove(uint16 val)
+    {
+        m_Move = val;
+    }
     unsigned int getTo()    const { return (m_Move >> 6) & 0x3F; }
     unsigned int getFrom()  const { return (m_Move)& 0x3F; }
     unsigned int getFlags() const { return (m_Move >> 12) & 0x0F; }
     bool isValid()          const { return m_Move != 0; }
+    uint16 getVal()         const { return m_Move; }
 
     bool operator == (CMove a) const { return (m_Move == a.m_Move); }
     bool operator != (CMove a) const { return (m_Move != a.m_Move); }
@@ -245,7 +250,6 @@ public:
     {
         m_Move = a.m_Move;
     }
-
 protected:
 
     uint16 m_Move;
@@ -620,7 +624,7 @@ struct TTEntry
         uint64 otherInfo;
         struct
         {
-            CMove  bestMove;        // 16 bits
+            uint16  bestMove;       // 16 bits
             int16  score;           // 16 bits
             uint8  scoreType;       // 8 bits       // this can be clubbed inside score and we can get 8 more bits of free space if needed
             uint8  depth;           // 8 bits
@@ -638,8 +642,8 @@ struct DualTTEntry
         uint64 hashKey;
         struct
         {
-            CMove bestMove;     // best move found
-            uint8 hashPart[6];  // most significant bits of the hash key
+            uint16 bestMove;     // best move found
+            uint8  hashPart[6];  // most significant bits of the hash key
         };
     } deepest; // 64 bits
 
@@ -648,8 +652,8 @@ struct DualTTEntry
         uint64 hashKey;
         struct
         {
-            CMove bestMove;
-            uint8 hashPart[6];  // most significant bits of the hash key
+            uint16 bestMove;
+            uint8  hashPart[6];  // most significant bits of the hash key
         };
     } mostRecent; // 64 bits
 
@@ -860,8 +864,8 @@ private:
     static uint64 sqsInLine(uint8 sq1, uint8 sq2);
 
     static void updateCastleFlag(HexaBitBoardPosition *pos, uint64 dst, uint8 chance);
-    __forceinline static uint64 findPinnedPieces(uint64 myKing, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
-    __forceinline static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
+    static uint64 findPinnedPieces(uint64 myKing, uint64 enemyBishops, uint64 enemyRooks, uint64 allPieces, uint8 kingIndex);
+    static uint64 findAttackedSquares(uint64 emptySquares, uint64 enemyBishops, uint64 enemyRooks, uint64 enemyPawns, uint64 enemyKnights,
                                                     uint64 enemyKing, uint64 myKing, uint8 enemyColor);
 private:
 
@@ -876,8 +880,8 @@ private:
     static void addEnPassentMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *pos, uint64 src, uint64 dst, uint8 chance);
     static void addPawnMoves(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *pos, uint64 src, uint64 dst, uint8 chance);
 
-    __forceinline static void addCompactMove(int *nMoves, CMove **genMoves, uint8 from, uint8 to, uint8 flags);
-    __forceinline static void addCompactPawnMoves(int *nMoves, CMove **genMoves, uint8 from, uint64 dst, uint8 flags);
+    static void addCompactMove(int *nMoves, CMove **genMoves, uint8 from, uint8 to, uint8 flags);
+    static void addCompactPawnMoves(int *nMoves, CMove **genMoves, uint8 from, uint64 dst, uint8 flags);
 
     // used for magic lookup table initialization
     static uint64 getOccCombo(uint64 mask, uint64 i);
@@ -902,7 +906,7 @@ private:
     static int generateMovesOutOfCheck(HexaBitBoardPosition *pos, CMove *genMoves, uint64 allPawns, uint64 allPieces, uint64 myPieces, uint64 enemyPieces, uint64 pinned, uint64 threatened, uint8 kingIndex);
 
     template<uint8 chance>
-    __forceinline static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+    static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
                                             uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves);
 
     // core functions
@@ -944,7 +948,7 @@ public:
 public:
     // unpack the bitboard structure
     template<uint8 chance>
-    __forceinline static ExpandedBitBoard ExpandBitBoard(HexaBitBoardPosition *pos);
+    static ExpandedBitBoard ExpandBitBoard(HexaBitBoardPosition *pos);
 
     static bool IsInCheck(HexaBitBoardPosition *pos);
 

@@ -35,10 +35,12 @@ uint64 BitBoardUtils::bishopMagicAttackTables[64][1 << BISHOP_MAGIC_BITS];  // 2
 
 uint8 BitBoardUtils::popCount(uint64 x)
 {
+#if USE_POPCNT == 1
 #ifdef __CUDA_ARCH__
     return __popcll(x);
-#elif USE_POPCNT == 1
-#ifdef _WIN64
+#elif __linux__
+    return __builtin_popcountll(x);
+#elif defined(_WIN64)
     return _mm_popcnt_u64(x);
 #else
     uint32 lo = (uint32)x;
@@ -64,8 +66,36 @@ uint8 BitBoardUtils::popCount(uint64 x)
 
 uint8 BitBoardUtils::bitScan(uint64 x)
 {
-#if USE_HW_BITSCAN != 1
-    const int index64[64] = {
+#if USE_HW_BITSCAN == 1
+#ifdef __CUDA_ARCH__
+    // __ffsll(x) returns position from 1 to 64 instead of 0 to 63
+    return __ffsll(x) - 1;
+#elif __linux__
+    return __builtin_ffsll(x) - 1;
+#elif _WIN64
+    unsigned long index = 0;
+    assert(x != 0);
+
+    _BitScanForward64(&index, x);
+    return (uint8)index;
+#else
+
+    uint32 lo = (uint32)x;
+    uint32 hi = (uint32)(x >> 32);
+    uint32 id;
+
+    if (lo)
+        _BitScanForward(&id, lo);
+    else
+    {
+        _BitScanForward(&id, hi);
+        id += 32;
+    }
+
+    return (uint8)id;
+#endif
+#else
+const int index64[64] = {
         0, 1, 48, 2, 57, 49, 28, 3,
         61, 58, 50, 42, 38, 29, 17, 4,
         62, 55, 59, 36, 53, 51, 43, 22,
@@ -78,32 +108,6 @@ uint8 BitBoardUtils::bitScan(uint64 x)
     const uint64 debruijn64 = C64(0x03f79d71b4cb0a89);
     assert(x != 0);
     return index64[((x & -static_cast<int64>(x)) * debruijn64) >> 58];
-#else
-#ifdef __CUDA_ARCH__
-    // __ffsll(x) returns position from 1 to 64 instead of 0 to 63
-    return __ffsll(x) - 1;
-#elif _WIN64
-    unsigned long index = 0;
-    assert(x != 0);
-
-    _BitScanForward64(&index, x);
-    return (uint8)index;
-#else
-
-    uint32 lo = (uint32)x;
-    uint32 hi = (uint32)(x >> 32);
-    DWORD id;
-
-    if (lo)
-        _BitScanForward(&id, lo);
-    else
-    {
-        _BitScanForward(&id, hi);
-        id += 32;
-    }
-
-    return (uint8)id;
-#endif
 #endif
 }
 
@@ -1502,3 +1506,9 @@ bool BitBoardUtils::IsIrReversibleMove(HexaBitBoardPosition *pos, CMove move)
 
 template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<WHITE>(HexaBitBoardPosition *pos);
 template ExpandedBitBoard BitBoardUtils::ExpandBitBoard<BLACK>(HexaBitBoardPosition *pos);
+
+template void BitBoardUtils::makeMove<WHITE>(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
+template void BitBoardUtils::makeMove<BLACK>(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
+
+
+

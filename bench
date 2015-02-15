@@ -1,0 +1,91 @@
+linux benchmarks:
+=================
+
+start pos:
+----------
+
+uci
+ucinewgame
+position startpos
+go infinite
+info depth 1 score cp 128 nodes 20 time 0 nps 20000 pv e2e4 
+info depth 2 score cp 0 nodes 93 time 0 nps 93000 pv e2e4 
+info depth 3 score cp 96 nodes 868 time 1 nps 868000 pv e2e4 
+info depth 4 score cp 0 nodes 2498 time 4 nps 624500 pv e2e4 
+info depth 5 score cp 88 nodes 24303 time 26 nps 934730 pv d2d4 
+info depth 6 score cp 2 nodes 68044 time 66 nps 1030969 pv e2e4 
+info depth 7 score cp 65 nodes 320848 time 167 nps 1921245 pv d2d4 
+info depth 8 score cp 0 nodes 838316 time 349 nps 2402051 pv d2d4 
+info depth 9 score cp 62 nodes 1856771 time 541 nps 3432109 pv d2d4 
+info depth 10 score cp 1 nodes 12723119 time 2903 nps 4382748 pv d2d4 
+info depth 11 score cp 45 nodes 26240761 time 5583 nps 4700118 pv d2d4 
+info depth 12 score cp 12 nodes 69608359 time 14493 nps 4802895 pv d2d4 b8a6 e2e4 e7e5 f1a6 c7c5 d4c5 d7d6 c5d6 f8d6 a6b7 
+info depth 13 score cp 46 nodes 152496153 time 31242 nps 4881126 pv e2e4 e7e6 g1f3 b8c6 b1c3 d7d5 d2d4 d5e4 c3e4 f7f5 
+bestmove e2e4 
+
+
+pos2:
+-----
+uci
+ucinewgame
+position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -
+go infinite
+info depth 1 score cp 136 nodes 2070 time 2 nps 1035000 pv e2a6 
+info depth 2 score cp 136 nodes 2725 time 3 nps 908333 pv e2a6 b4c3 
+info depth 3 score cp 105 nodes 18068 time 18 nps 1003777 pv e2a6 e6d5 e5g6 
+info depth 4 score cp 105 nodes 58835 time 46 nps 1279021 pv e2a6 e6d5 e5g6 f7g6 
+info depth 5 score cp 59 nodes 160772 time 85 nps 1891435 pv e2a6 e6d5 c3d5 f6d5 e4d5 
+info depth 6 score cp 59 nodes 583495 time 224 nps 2604888 pv e2a6 e6d5 c3d5 f6d5 e4d5 g7e5 
+info depth 7 score cp -21 nodes 2054458 time 468 nps 4389867 pv e2a6 b4c3 d2c3 e6d5 e1g1 f6e4 e5c6 
+info depth 8 score cp -21 nodes 4012410 time 821 nps 4887222 pv e2a6 b4c3 d2c3 e6d5 e1g1 f6e4 e5c6 d7c6 
+info depth 9 score cp -21 nodes 7769613 time 1375 nps 5650627 pv e2a6 b4c3 d2c3 e6d5 e5g4 h3g2 f3g2 d5e4 g4f6 
+info depth 10 score cp -21 nodes 19782861 time 3515 nps 5628125 pv e2a6 h3g2 f3g2 b4c3 d2c3 e6d5 e5g4 d5e4 g4f6 g7f6 
+info depth 11 score cp -24 nodes 47008719 time 7496 nps 6271173 pv e2a6 e6d5 c3d5 f6d5 e1g1 e7e5 e4d5 e5d5 f1e1 e8d8 
+info depth 12 score cp -24 nodes 101150829 time 16642 nps 6078045 pv e2a6 e6d5 c3d5 f6d5 e1g1 e7e5 e4d5 e5d5 f1e1 e8d8 a6b7 d5d2 
+bestmove e2a6 
+
+
+=== windows benchmarks === 
+
+start pos:
+----------
+uci
+ucinewgame
+position startpos
+go infinite
+info depth 1 score cp 128 nodes 20 time 0 nps 20000 pv e2e4
+info depth 2 score cp 0 nodes 93 time 0 nps 93000 pv e2e4
+info depth 3 score cp 96 nodes 868 time 0 nps 868000 pv e2e4
+info depth 4 score cp 0 nodes 2498 time 9 nps 277555 pv e2e4
+info depth 5 score cp 88 nodes 24303 time 9 nps 2700333 pv d2d4
+info depth 6 score cp 2 nodes 68044 time 29 nps 2346344 pv e2e4
+info depth 7 score cp 65 nodes 320848 time 80 nps 4010600 pv d2d4
+info depth 8 score cp 0 nodes 838316 time 240 nps 3492983 pv d2d4
+info depth 9 score cp 62 nodes 1856771 time 470 nps 3950576 pv d2d4
+info depth 10 score cp 1 nodes 12723119 time 3460 nps 3677202 pv d2d4
+info depth 11 score cp 45 nodes 26240761 time 6800 nps 3858935 pv d2d4
+info depth 12 score cp 12 nodes 69608359 time 17851 nps 3899409 pv d2d4 b8a6 e2e4 e7e5 f1a6 c7c5 d4c5 d7d6 c5d6 f8d6 a6b7
+bestmove d2d4
+
+
+pos2:
+-----
+uci
+ucinewgame
+position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -
+go infinite
+info depth 1 score cp 136 nodes 2070 time 0 nps 2070000 pv e2a6
+info depth 2 score cp 136 nodes 2725 time 0 nps 2725000 pv e2a6 b4c3
+info depth 3 score cp 105 nodes 18068 time 9 nps 2007555 pv e2a6 e6d5 e5g6
+info depth 4 score cp 105 nodes 58835 time 20 nps 2941750 pv e2a6 e6d5 e5g6 f7g6
+info depth 5 score cp 59 nodes 160772 time 40 nps 4019300 pv e2a6 e6d5 c3d5 f6d5 e4d5
+info depth 6 score cp 59 nodes 583495 time 130 nps 4488423 pv e2a6 e6d5 c3d5 f6d5 e4d5 g7e5
+info depth 7 score cp -21 nodes 2054458 time 420 nps 4891566 pv e2a6 b4c3 d2c3 e6d5 e1g1 f6e4 e5c6
+info depth 8 score cp -21 nodes 4012410 time 840 nps 4776678 pv e2a6 b4c3 d2c3 e6d5 e1g1 f6e4 e5c6 d7c6
+info depth 9 score cp -21 nodes 7769613 time 1500 nps 5179742 pv e2a6 b4c3 d2c3e6d5 e5g4 h3g2 f3g2 d5e4 g4f6
+info depth 10 score cp -21 nodes 19782861 time 4080 nps 4848740 pv e2a6 h3g2 f3g2 b4c3 d2c3 e6d5 e5g4 d5e4 g4f6 g7f6
+info depth 11 score cp -24 nodes 47008719 time 8880 nps 5293774 pv e2a6 e6d5 c3d5 f6d5 e1g1 e7e5 e4d5 e5d5 f1e1 e8d8
+info depth 12 score cp -24 nodes 101150829 time 19941 nps 5072505 pv e2a6 e6d5 c3d5 f6d5 e1g1 e7e5 e4d5 e5d5 f1e1 e8d8 a6b7 d5d2
+bestmove e2a6
+
+linux gcc build is > 20% faster on average!!

@@ -694,7 +694,7 @@ bool TranspositionTable::lookup(uint64 hash, int searchDepth, int16 *score, uint
         *score = entry->scoreDeepest;
         *scoreType = entry->scoreTypeDeepest;
         *foundDepth = entry->depthDeepest;
-        *bestMove = entry->deepest.bestMove;
+        *bestMove = CMove(entry->deepest.bestMove);
         found = true;
     }
     else if ((entry->mostRecent.hashKey & hashBits) == (hash & hashBits))
@@ -702,7 +702,7 @@ bool TranspositionTable::lookup(uint64 hash, int searchDepth, int16 *score, uint
         *score = entry->scoreMostRecent;
         *scoreType = entry->scoreTypeMostRecent;
         *foundDepth = entry->depthMostRecent;
-        *bestMove = entry->mostRecent.bestMove;
+        *bestMove = CMove(entry->mostRecent.bestMove);
         found = true;
     }
 
@@ -736,7 +736,7 @@ bool TranspositionTable::lookup(uint64 hash, int searchDepth, int16 *score, uint
         *score      = entry.score;
         *scoreType  = entry.scoreType;
         *foundDepth = entry.depth;
-        *bestMove   = entry.bestMove;
+        *bestMove   = CMove(entry.bestMove);
 
         return true;
     }
@@ -771,7 +771,7 @@ void TranspositionTable::update(uint64 hash, int16 score, uint8 scoreType, CMove
         entry->scoreDeepest = score;
         entry->scoreTypeDeepest = scoreType;
         entry->deepest.hashKey  = hash;
-        entry->deepest.bestMove = bestMove;
+        entry->deepest.bestMove = bestMove.getVal();
     }
     else
     {
@@ -780,7 +780,7 @@ void TranspositionTable::update(uint64 hash, int16 score, uint8 scoreType, CMove
         entry->scoreMostRecent = score;
         entry->scoreTypeMostRecent = scoreType;
         entry->mostRecent.hashKey = hash;
-        entry->mostRecent.bestMove = bestMove;
+        entry->mostRecent.bestMove = bestMove.getVal();
     }
 #else
 
@@ -791,7 +791,7 @@ void TranspositionTable::update(uint64 hash, int16 score, uint8 scoreType, CMove
     {
         TTEntry entry;
         entry.age = age;
-        entry.bestMove = bestMove;
+        entry.bestMove = bestMove.getVal();
         entry.depth = depth;
         entry.hashKey = hash;
         entry.score = score;
