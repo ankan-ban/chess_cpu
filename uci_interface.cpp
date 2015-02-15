@@ -219,6 +219,13 @@ void UciInterface::ProcessCommands()
         {
             printf("bench function TODO\n");
         }
+        else if (strstr(input, "eval"))
+        {
+            HexaBitBoardPosition pos;
+            Game::GetPos(&pos);
+            int val = BitBoardUtils::Evaluate(&pos);
+            printf("\nBoard eval: %d\n", val);
+        }
         else if (strstr(input, "perft"))
         {
             input += 6;

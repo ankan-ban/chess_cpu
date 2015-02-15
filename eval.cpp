@@ -381,7 +381,97 @@ int16 BitBoardUtils::evaluateMobility(const EvalBitBoard &ebb, bool endGame)
 }
 
 
+// penalty for doubled pawns
+// from https://home.comcast.net/~danheisman/Articles/doubled_pawns.htm
+/*
+    Number of pawns per side                 Cost
+        8                                     .19
+        7                                     .11
+        6                                     .25
+        5                                     .20
+        4                                     .29
+        3                                     .33
+        2                                     .47
+*/
+const int16 doubledPawnCost[] = { 0, 0, 25, 25, 20, 20, 20, 20, 20};
+
+// more bonus for advancing passed pawn (first from black's point of view and then white)
+// TODO: maybe these values are bit on high side - mabe scale them a bit ?
+const int16 passedPawnBonusBlack[] =
+{
+     0,  0,  0,  0,  0,  0,  0,  0,
+    45, 45, 45, 45, 45, 45, 45, 45,
+    40, 40, 40, 40, 40, 40, 40, 40,
+    35, 35, 35, 35, 35, 35, 35, 35,
+    32, 32, 32, 32, 32, 32, 32, 32,
+    30, 30, 30, 30, 30, 30, 30, 30,
+    25, 25, 25, 25, 25, 25, 25, 25,
+     0,  0,  0,  0,  0,  0,  0,  0,
+
+};
+const int16 passedPawnBonusWhite[] =
+{
+      0,  0,  0,  0,  0,  0,  0,  0,
+     25, 25, 25, 25, 25, 25, 25, 25,
+     30, 30, 30, 30, 30, 30, 30, 30,
+     32, 32, 32, 32, 32, 32, 32, 32,
+     35, 35, 35, 35, 35, 35, 35, 35,
+     40, 40, 40, 40, 40, 40, 40, 40,
+     45, 45, 45, 45, 45, 45, 45, 45,
+      0,  0,  0,  0,  0,  0,  0,  0,
+};
+
+int16 BitBoardUtils::evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame)
+{
+    int16 score = 0;
+
+    // doubled pawns
+    uint64 whiteFrontSpan   = northOne(northFill(ebb.whitePawns, ALLSET));
+    uint64 whitePawnsInfrontOwn = ebb.whitePawns & whiteFrontSpan;
+    int16 doubledWhitePawns = popCount(whitePawnsInfrontOwn);
+    score -= doubledWhitePawns * 20; //doubledPawnCost[popCount(ebb.whitePawns)];
+    
+    uint64 blackFrontSpan = southOne(southFill(ebb.blackPawns, ALLSET));
+    uint64 blackPawnsInfrontOwn = ebb.blackPawns & blackFrontSpan;
+    int16 doubledBlackPawns = popCount(blackPawnsInfrontOwn);
+    score += doubledBlackPawns * 20; // doubledPawnCost[popCount(ebb.blackPawns)];
+    
+    // passed pawns
+#if 1
+    int16 passedPawnScore = 0;
+    {
+        uint64 allFrontSpansBlack = westOne(blackFrontSpan) | blackFrontSpan | eastOne(blackFrontSpan);
+        uint64 whitePassedPawns = ebb.whitePawns & (~allFrontSpansBlack);
+        whitePassedPawns &= ~whitePawnsInfrontOwn;     // no double bonus for doubled pawn
+        while (whitePassedPawns)
+        {
+            uint64 pawn = getOne(whitePassedPawns);
+            passedPawnScore += passedPawnBonusWhite[bitScan(pawn)];
+            whitePassedPawns ^= pawn;
+        }
+
+        uint64 allFrontSpansWhite = westOne(whiteFrontSpan) | whiteFrontSpan | eastOne(whiteFrontSpan);
+        uint64 blackPassedPawns = ebb.blackPawns & (~allFrontSpansWhite);
+        blackPassedPawns &= ~blackPawnsInfrontOwn;     // no double bonus for doubled pawn
+        while (blackPassedPawns)
+        {
+            uint64 pawn = getOne(blackPassedPawns);
+            passedPawnScore -= passedPawnBonusBlack[bitScan(pawn)];
+            blackPassedPawns ^= pawn;
+        }
+    }
+    if (!endGame)
+    {
+        passedPawnScore /= 2;
+    }
+    score += passedPawnScore;
+#endif
+    return score;
+}
+
+
 // call templated version (on chance) of the function internally?
+//  - not really required as we always evaluate from white's prespective and then invert he score if needed
 int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
 {
     uint64 allPawns = pos->pawns & RANKS2TO7;    // get rid of game state variables
@@ -430,7 +520,7 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     // maybe use two tables - for white and black pieces?
     int16 positional = 0;
 
-    positional += getPieceSquareScore(allPawns,   ebb.whitePieces, squareEvalPawn);
+    positional += getPieceSquareScore(allPawns,   ebb.whitePieces, squareEvalPawn) / 2;
     positional += getPieceSquareScore(allKnights, ebb.whitePieces, squareEvalKnight);
     positional += getPieceSquareScore(allBishops, ebb.whitePieces, squareEvalBishop);
     positional += getPieceSquareScore(allRooks,   ebb.whitePieces, squareEvalRook);
@@ -461,8 +551,13 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     //int blackMoves = countMoves<BLACK>(pos);
     //int16 mobility = (whiteMoves - blackMoves) * MOBILITY_FACTOR;
 
-    int16 finalEval = material + positional + mobility;
-
+    
+    
+    // pawn structure
+    int16 pawnStruct = evaluatePawnStructure(ebb, endGame);
+    
+    
+    int16 finalEval = material + positional + mobility + pawnStruct;
 
     // evaluate basic draws
     if ((popCount(ebb.whitePieces) == 2) && (finalEval > 0))

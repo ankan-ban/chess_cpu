@@ -911,6 +911,9 @@ private:
     // evaluate mobility
     static int16 evaluateMobility(const EvalBitBoard &ebb, bool endGame);
 
+    // evaluate pawn structure
+    static int16 evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame);
+
 public:
     template<uint8 chance>
     static void makeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move);
