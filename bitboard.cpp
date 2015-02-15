@@ -38,7 +38,7 @@ uint8 BitBoardUtils::popCount(uint64 x)
 #if USE_POPCNT == 1
 #ifdef __CUDA_ARCH__
     return __popcll(x);
-#elif __linux__
+#elif __GNUC__
     return __builtin_popcountll(x);
 #elif defined(_WIN64)
     return _mm_popcnt_u64(x);
@@ -70,7 +70,7 @@ uint8 BitBoardUtils::bitScan(uint64 x)
 #ifdef __CUDA_ARCH__
     // __ffsll(x) returns position from 1 to 64 instead of 0 to 63
     return __ffsll(x) - 1;
-#elif __linux__
+#elif __GNUC__
     return __builtin_ffsll(x) - 1;
 #elif _WIN64
     unsigned long index = 0;
