@@ -45,7 +45,10 @@
 #define MIN_MOVES_FOR_NULL_MOVE 4
 
 // check extensions in q-search (seems to weaken the engine - maybe makes it significantly slow?)
-#define CHECK_EXTENSIONS 0
+#define Q_SEARCH_CHECK_EXTENSIONS 0
+
+// check extension in regular search - worth ~65 ELO!
+#define CHECK_EXTENSIONS 1
 
 // use a small (2 MB) Transposition table for q-search
 // doesn't seem to help much (or at all ?)
@@ -71,3 +74,14 @@
 
 // no of killer moves per level
 #define MAX_KILLERS 2
+
+// use SEE for move ordering - doesn't seem to help
+// computing and sorting moves based on SEE adds more cost than benefit of SEE
+#define SEE_MOVE_ORDERING 0
+
+#define MIN_DEPTH_FOR_SEE 2
+
+#define Q_SEARCH_SEE_PRUNING 0
+
+// debugging switches
+#define GATHER_STATS 0

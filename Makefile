@@ -5,15 +5,24 @@ OBJECTS_ARM = bitboard.a magics.a main.a move_gen.a search.a uci_interface.a uti
 default: chess_cpu
 
 %.o: 	%.cpp $(HEADERS)
-	g++ -c $< -o $@ -Ofast -std=c++11 -pthread -flto -msse4.2 -mtune=native -static 
+	g++ -c $< -o $@ -Ofast -std=c++11 -pthread -flto -march=core2 -msse4.2 -mtune=native -static 
 
 chess_cpu: $(OBJECTS)
-	g++ $(OBJECTS) -o $@ -Ofast -std=c++11 -pthread -flto -msse4.2 -mtune=native -static 
+	g++ $(OBJECTS) -o $@ -Ofast -std=c++11 -pthread -flto -march=core2 -msse4.2 -mtune=native -static 
 ifeq ($(OS),Windows_NT)
 	del  $(OBJECTS)
 else
 	-rm -f $(OBJECTS)
 endif
+
+chess_native: $(OBJECTS)
+	g++ $(OBJECTS) -o $@ -Ofast -std=c++11 -pthread -flto -march=native -static 
+ifeq ($(OS),Windows_NT)
+	del  $(OBJECTS)
+else
+	-rm -f $(OBJECTS)
+endif
+
 
 clean:
 ifeq ($(OS),Windows_NT)

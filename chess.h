@@ -315,6 +315,9 @@ code	promotion	capture	special 1	special 0	kind of move
 // actually it's 27 for a queen when it's in the center of the board
 #define MAX_SINGLE_PIECE_MOVES 32
 
+// in theory - in practice should be much lesser than this
+#define MAX_CAPTURE_SEQ_LENGTH 32
+
 // random numbers for zobrist hashing
 struct ZobristRandoms
 {
@@ -466,11 +469,23 @@ private:
 
     static uint64 nodes;
 
+#if GATHER_STATS == 1
+    static uint32 totalSearched;
+    static uint32 nonTTSearched;
+    static uint32 nonCaptureSearched;
+    static uint32 nonKillersSearched;
+#endif
+
     // killer moves
     static CMove killers[MAX_GAME_LENGTH][MAX_KILLERS];
 
     // the code assumes that there are only two killer moves
     CT_ASSERT(MAX_KILLERS == 2);
+
+    // sort captures based on SEE
+    template<uint8 chance>
+    static int16 SortCapturesSEE(HexaBitBoardPosition *pos, CMove* captures, int nMoves);
+
 
     // perform alpha-beta search on the given position
     template<uint8 chance>
@@ -899,6 +914,8 @@ private:
 
     static void generateSlidingCapturesForSquare(uint64 square, uint8 sqIndex, uint64 slidingSources, uint64 pinned, uint8 kingIndex, int *nMoves, CMove **genMoves);
 
+    static bool generateFirstSlidingCapturesForSquare(uint64 square, uint8 sqIndex, uint64 slidingSources, uint64 pinned, uint8 kingIndex, CMove *genMove);
+
     template<uint8 chance>
     static int generateMoves(HexaBitBoardPosition *pos, CMove *genMoves);
 
@@ -908,6 +925,12 @@ private:
     template<uint8 chance>
     static void generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
                                             uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves);
+
+
+    template<uint8 chance>
+    static bool generateFirstLVACaptureForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+                                                 uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, CMove *genMove);
+
 
     // core functions
     static int16 getPieceSquareScore(uint64 pieceSet, uint64 whiteSet, const int16 table[]);
@@ -945,6 +968,11 @@ public:
     template<uint8 chance>
     static int generateMovesCausingCheck(const ExpandedBitBoard *bb, CMove *genMoves);
 
+    static int getPieceAtSquare(HexaBitBoardPosition *pos, uint64 square);
+
+    template<uint8 chance>
+    static int16 seeSquare(HexaBitBoardPosition *pos, uint64 square);
+
 public:
     // unpack the bitboard structure
     template<uint8 chance>
@@ -970,6 +998,10 @@ public:
 
     // evaluate a board position
     static int16 Evaluate(HexaBitBoardPosition *pos);
+
+    // evaluate a capture using SEE
+    template<uint8 chance>
+    static int16 EvaluateSEE(HexaBitBoardPosition *pos, CMove capture);
 
     // evaluate if the position is a draw
     static bool isDrawn(ExpandedBitBoard const &bb);

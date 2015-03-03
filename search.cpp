@@ -38,7 +38,7 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
         return stand_pat;
     }
 
-#if CHECK_EXTENSIONS == 1
+#if Q_SEARCH_CHECK_EXTENSIONS == 1
     // to detect infinite check->check evasion loops
     posHashes[curPly] = hash;
 #endif
@@ -70,14 +70,19 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
     else
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
+
+        // sorting captures using SEE doesn't seem to benefit at all :-(
     }
 
     for (int i = 0; i < nMoves; i++)
     {
+#if Q_SEARCH_SEE_PRUNING == 1
+        if ((!inCheck) && BitBoardUtils::EvaluateSEE<chance>(pos, newMoves[i]) <= 0)
+            continue;
+#endif
+
         HexaBitBoardPosition newPos = *pos;
         uint64 newhash = hash;
-
-        // TODO: prune out bad captures (check out SEE and delta pruning!)
 
         BitBoardUtils::MakeMove(&newPos, newhash, newMoves[i]);
 
@@ -99,7 +104,7 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
         }
     }
 
-#if CHECK_EXTENSIONS == 1
+#if Q_SEARCH_CHECK_EXTENSIONS == 1
     // check extensions: try moves that would put opponent side in check
     if (!inCheck)
     {
@@ -150,14 +155,93 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
 }
 
 
+// returns the index of first non-winning capture (or the no. of winning captures)
+template<uint8 chance>
+int16 Game::SortCapturesSEE(HexaBitBoardPosition *pos, CMove* captures, int nMoves)
+{
+    int16 scores[MAX_MOVES];
+
+    // 1. evaluate all caputres using SEE
+    for (int i = 0; i < nMoves; i++)
+    {
+        scores[i] = BitBoardUtils::EvaluateSEE<chance>(pos, captures[i]);
+    }
+
+    // sort captures list based on score 
+    // use insertion sort as data set is expected to be very small (taken from wikipedia)
+    for (int i = 1; i < nMoves; i++)
+    {
+        int j = i;
+        int scoreX = scores[j];
+        CMove moveX = captures[j];
+        while (j > 0 && scores[j - 1] < scoreX)
+        {
+            scores[j] = scores[j - 1];
+            captures[j] = captures[j - 1];
+            j--;
+        }
+        scores[j] = scoreX;
+        captures[j] = moveX;
+    }
+
+    // find the index of first non-winning capture
+    // we can use binary search or merge this with the outer loop of the above block - but the complexity is not worth it
+    int winningCaptures = 0;
+    while (winningCaptures < nMoves &&
+           scores[winningCaptures] > 0)
+    {
+        winningCaptures++;
+    }
+    
+    return winningCaptures;
+}
+
+// adjust mate score returned to the ply where we extended the depth
+static int16 adjustScoreForExtension(int16 score, bool extended)
+{
+    if (!extended)
+        return score;
+
+    if (abs(score) >= MATE_SCORE_BASE / 2)
+    {
+        if (score < 0)
+            score++;
+        else
+            score--;
+    }
+
+    return score;
+}
+
 // negamax forumlation of alpha-beta search
 template<uint8 chance>
 int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool allowNullMove)
 {
+    // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
+    ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
+
+    // detect basic draws (insufficient material)
+    if (BitBoardUtils::isDrawn(bb))
+    {
+        return 0;
+    }
+
+    bool inCheck = !!(bb.threatened & bb.myKing);
+
+    bool extendedDepth = false;
+
+#if CHECK_EXTENSIONS == 1
+    if (inCheck)
+    {
+        depth++;
+        extendedDepth = true;
+    }
+#endif
+
     if (depth == 0)
     {
         int16 qSearchVal = q_search<chance>(pos, hash, depth, alpha, beta, curPly);
-        return qSearchVal;
+        return adjustScoreForExtension(qSearchVal, extendedDepth);
     }
 
     // detect draw by repetition
@@ -171,16 +255,6 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
-    // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
-    ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
-
-    // detect basic draws (insufficient material)
-    if (BitBoardUtils::isDrawn(bb))
-    {
-        return 0;
-    }
-
-    bool inCheck = !!(bb.threatened & bb.myKing);
 
     // try null move
     
@@ -214,6 +288,10 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
 
         int16 nullMoveScore = -alphabeta<!chance>(pos, newHash, depth - 1 - R, curPly + 1, -beta, -beta + 1, false);
+
+        // not needed as we only extend when in check, and we don't perform null move when in check
+        //nullMoveScore = adjustScoreForExtension(nullMoveScore, extendedDepth);
+        
 
         // undo null move
         pos->chance = !pos->chance;
@@ -257,15 +335,27 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     // http://www.open-aurec.com/wbforum/viewtopic.php?f=4&t=4698
     if (depth >= MIN_DEPTH_FOR_IID)
     {
-        if (hashDepth < depth - 1)
+        int iidDepth = depth - 1;
+
+        // account for extensions
+        if (extendedDepth)
         {
-            alphabeta<chance>(pos, hash, depth - 1, curPly, alpha, beta, allowNullMove);
+            iidDepth--;
+        }
+
+        if (hashDepth < iidDepth)
+        {
+            alphabeta<chance>(pos, hash, iidDepth, curPly, alpha, beta, allowNullMove);
 
             // again query the TT (to get updated value)
             foundInTT = TranspositionTable::lookup(hash, depth, &hashScore, &scoreType, &hashDepth, &ttMove);
         }
     }
 
+
+#if GATHER_STATS == 1
+    totalSearched++;
+#endif
 
     int16 currentMax = -INF;
 
@@ -280,6 +370,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
         int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+        curScore = adjustScoreForExtension(curScore, extendedDepth);
+
         if (curScore >= beta)
         {
             // update killer move table if this was a non-capture move
@@ -304,8 +396,11 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
-    int searched = 0;
+#if GATHER_STATS == 1
+    nonTTSearched++;
+#endif
 
+    int searched = 0;
 
     // generate child nodes
     CMove newMoves[MAX_MOVES];
@@ -319,6 +414,16 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
 
+
+#if SEE_MOVE_ORDERING == 1
+        // sorting captures using SEE is overall a loss and sometimes even results in bigger tree! Bug?
+        // searching losing captures after quiet moves results in even bigger tree! Another bug?
+        if (depth >= MIN_DEPTH_FOR_SEE)
+        {
+            int winningCaptures = SortCapturesSEE<chance>(pos, newMoves, nMoves);
+        }
+#endif
+
         // search captures first
         for (int i = 0; i < nMoves; i++)
         {
@@ -329,6 +434,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
                 BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
                 int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+                curScore = adjustScoreForExtension(curScore, extendedDepth);
+
                 if (curScore >= beta)
                 {
                     TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
@@ -353,6 +460,10 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         nMoves += BitBoardUtils::generateNonCaptures<chance>(&bb, &newMoves[nMoves]);   // then rest of the moves
     }
 
+
+#if GATHER_STATS == 1
+    nonCaptureSearched++;
+#endif
 
     // special case: Check if it's checkmate or stalemate
     if (nMoves == 0)
@@ -393,6 +504,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
             int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            curScore = adjustScoreForExtension(curScore, extendedDepth);
+
             if (curScore >= beta)
             {
                 // increase priority of this killer
@@ -423,6 +536,11 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         }
     }
 
+#if GATHER_STATS == 1
+    nonKillersSearched++;
+#endif
+
+
     // try remaining moves (non capture, non TT and non-killer)
     for (int i = searched; i < nMoves; i++)
     {
@@ -433,6 +551,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
             int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            curScore = adjustScoreForExtension(curScore, extendedDepth);
+
             if (curScore >= beta)
             {
                 // update killer table
@@ -456,6 +576,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             }
         }
     }
+
 
     // default node type is ALL node and the score returned is a upper bound on the score of the node
     if (improvedAlpha)
@@ -548,6 +669,11 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
     else
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
+
+#if SEE_MOVE_ORDERING == 1
+        // sorting captures using SEE at root node always results in bigger tree! Bug?
+        SortCapturesSEE<chance>(pos, newMoves, nMoves);
+#endif
 
         // search captures first
         for (int i = 0; i < nMoves; i++)

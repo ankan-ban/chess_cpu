@@ -1300,6 +1300,132 @@ void BitBoardUtils::generateSlidingCapturesForSquare(uint64 square, uint8 sqInde
     }
 }
 
+bool BitBoardUtils::generateFirstSlidingCapturesForSquare(uint64 square, uint8 sqIndex, uint64 slidingSources, uint64 pinned, uint8 kingIndex, CMove *genMove)
+{
+    while (slidingSources)
+    {
+        uint64 piece = getOne(slidingSources);
+        int index = bitScan(piece);
+        if (piece & pinned)
+        {
+            // this lookup can probably be avoided ? (replacing this with a check to see if the piece lies in the line between the 'square' and 'king')
+            uint64 line = sqsInLine(index, kingIndex);
+            if (square & line)
+            {
+                CMove move(index, sqIndex, CM_FLAG_CAPTURE);
+                *genMove = move;
+                return true;
+            }
+        }
+        else
+        {
+            CMove move(index, sqIndex, CM_FLAG_CAPTURE);
+            *genMove = move;
+            return true;
+        }
+        slidingSources ^= piece;
+    }
+    return false;
+}
+
+
+template<uint8 chance>
+bool BitBoardUtils::generateFirstLVACaptureForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+                                                     uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, CMove *genMove)
+{
+    uint8 sqIndex = bitScan(square);
+
+    // pawn captures
+
+    uint64 pawn = ((chance == WHITE) ? southWestOne(square) : northWestOne(square));
+    if (pawn & myPawns)
+    {
+        uint8 pawnIndex = bitScan(pawn);
+        if (pinned & pawn)
+        {
+            uint64 line = sqsInLine(pawnIndex, kingIndex);
+            if (square & line)
+            {
+                CMove move(pawnIndex, sqIndex, CM_FLAG_CAPTURE);
+                *genMove = move;
+                return true;
+            }
+        }
+        else
+        {
+            CMove move(pawnIndex, sqIndex, CM_FLAG_CAPTURE);
+            *genMove = move;
+            return true;
+        }
+    }
+
+    pawn = ((chance == WHITE) ? southEastOne(square) : northEastOne(square));
+    if (pawn & myPawns)
+    {
+        uint8 pawnIndex = bitScan(pawn);
+        if (pinned & pawn)
+        {
+            uint64 line = sqsInLine(pawnIndex, kingIndex);
+            if (square & line)
+            {
+                CMove move(pawnIndex, sqIndex, CM_FLAG_CAPTURE);
+                *genMove = move;
+                return true;
+            }
+        }
+        else
+        {
+            CMove move(pawnIndex, sqIndex, CM_FLAG_CAPTURE);
+            *genMove = move;
+            return true;
+        }
+    }
+
+
+    // knight captures (only non-pinned knights can move)
+    uint64 knightSources = sqKnightAttacks(sqIndex) & myNonPinnedKnights;
+    if (knightSources)
+    {
+        uint64 knight = getOne(knightSources);
+
+        CMove move(bitScan(knight), sqIndex, CM_FLAG_CAPTURE);
+        *genMove = move;
+        return true;
+    }
+
+    // bishop attacks
+    uint64 bishopAttackers = bishopAttacks(square, ~allPieces);
+    uint64 bishopSources = bishopAttackers & myBishops;
+    if (generateFirstSlidingCapturesForSquare(square, sqIndex, bishopSources, pinned, kingIndex, genMove))
+        return true;
+
+    // rook attacks
+    uint64 rookAttackers = rookAttacks(square, ~allPieces);
+    uint64 rookSources = rookAttackers & myRooks;
+    if (generateFirstSlidingCapturesForSquare(square, sqIndex, rookSources, pinned, kingIndex, genMove))
+        return true;
+
+    // queen attacks
+    uint64 queenSources = (bishopAttackers | rookAttackers) & myQueens;
+    if (generateFirstSlidingCapturesForSquare(square, sqIndex, queenSources, pinned, kingIndex, genMove))
+        return true;
+
+    // king attacks
+    if (square & (~threatened)) // king can't capture pieces that have support
+    {
+        uint64 kingSources = sqKingAttacks(sqIndex) & myKing;
+        if (kingSources)
+        {
+            CMove move(kingIndex, sqIndex, CM_FLAG_CAPTURE);
+            *genMove = move;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
 template<uint8 chance>
 void BitBoardUtils::generateLVACapturesForSquare(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
                                                  uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, int *nMoves, CMove **genMoves)
@@ -2892,3 +3018,10 @@ template int BitBoardUtils::generateMovesOutOfCheck<BLACK>(const ExpandedBitBoar
 
 template int BitBoardUtils::generateMovesCausingCheck<WHITE>(const ExpandedBitBoard *bb, CMove *genMoves);
 template int BitBoardUtils::generateMovesCausingCheck<BLACK>(const ExpandedBitBoard *bb, CMove *genMoves);
+
+
+template bool BitBoardUtils::generateFirstLVACaptureForSquare<WHITE>(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+    uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, CMove *genMove);
+
+template bool BitBoardUtils::generateFirstLVACaptureForSquare<BLACK>(uint64 square, uint64 pinned, uint64 threatened, uint64 myKing, uint8 kingIndex, uint64 allPieces,
+    uint64 myPawns, uint64 myNonPinnedKnights, uint64 myBishops, uint64 myRooks, uint64 myQueens, CMove *genMove);

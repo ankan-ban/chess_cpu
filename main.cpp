@@ -2,7 +2,7 @@
 
 int main()
 {
-    printf("\nAnkan's chess engine\n");
+    // printf("\nAnkan's chess engine\n");
 
     UciInterface::ProcessCommands();
 
@@ -21,6 +21,14 @@ CMove Game::pv[MAX_GAME_LENGTH];
 int   Game::pvLen;
 
 uint64 Game::nodes;
+
+#if GATHER_STATS == 1
+uint32 Game::totalSearched;
+uint32 Game::nonTTSearched;
+uint32 Game::nonCaptureSearched;
+uint32 Game::nonKillersSearched;
+#endif
+
 
 uint64 Game::posHashes[MAX_GAME_LENGTH];
 int Game::plyNo;
@@ -84,6 +92,13 @@ void Game::StartSearch()
     searching = true;
     nodes = 0;
 
+#if GATHER_STATS == 1
+    totalSearched = 0;
+    nonTTSearched = 0;
+    nonCaptureSearched = 0;
+    nonKillersSearched = 0;
+#endif
+
     timer.start();
 
     for (int depth = 1; depth < maxSearchDepth; depth++)
@@ -137,6 +152,11 @@ void Game::StartSearch()
             Utils::displayCompactMove(pv[i]);
         }
         printf("\n");
+
+#if GATHER_STATS == 1
+        printf("total: %d, needsMoveGen: %d, needsNonCaptures: %d, needsNonKillers: %d\n", totalSearched, nonTTSearched, nonCaptureSearched, nonKillersSearched);
+#endif
+
         fflush(stdout);
 
         // TODO: better time management

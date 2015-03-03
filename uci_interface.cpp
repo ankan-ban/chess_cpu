@@ -139,7 +139,8 @@ void UciInterface::ProcessCommands()
 
             if (strstr(input, "startpos")) 
             {
-                nMoves = Utils::readFENString("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", &temp) - 1; // start position
+                char startposFen[] = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+                nMoves = Utils::readFENString(startposFen, &temp) - 1; // start position
             }
             else 
             {

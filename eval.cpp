@@ -20,6 +20,15 @@
 // 5 centipawn bonus for every extra legal move
 #define MOBILITY_FACTOR       5
 
+
+const int16 materialEval[] = { 0,
+                              PAWN_MATERIAL_VAL, 
+                              KNIGHT_MATERIAL_VAL, 
+                              BISHOP_MATERIAL_VAL, 
+                              ROOK_MATERIAL_VAL, 
+                              QUEEN_MATERIAL_VAL, 
+                              INF};
+
 // piece-square tables - from black's point of view and then from white's pov
 const int16 squareEvalPawn[] =
 {
@@ -627,3 +636,106 @@ bool BitBoardUtils::isDrawn(ExpandedBitBoard const &bb)
 
     return false;
 }
+
+
+int BitBoardUtils::getPieceAtSquare(HexaBitBoardPosition *pos, uint64 square)
+{
+    if (square & (pos->pawns & RANKS2TO7))
+        return PAWN;
+
+    if (square & pos->knights)
+        return KNIGHT;
+
+    uint64 allQueens = pos->bishopQueens & pos->rookQueens;
+    if (square & allQueens)
+        return QUEEN;
+
+    if (square & pos->rookQueens)
+        return ROOK;
+
+    if (square & pos->bishopQueens)
+        return BISHOP;
+
+    if (square & pos->kings)
+        return KING;
+
+    return 0;
+}
+
+
+template<uint8 chance>
+int16 BitBoardUtils::seeSquare(HexaBitBoardPosition *pos, uint64 square)
+{
+    ExpandedBitBoard ebb = ExpandBitBoard<chance>(pos);
+
+    uint64 myNonPinnedKnights = ebb.myKnights & (~(ebb.pinned));
+    uint64 allQueens = ebb.bishopQueens & ebb.rookQueens;
+    uint64 myBishops = ebb.myBishopQueens & (~allQueens);
+    uint64 myRooks = ebb.myRookQueens & (~allQueens);
+    uint64 myQueens = allQueens & ebb.myPieces;
+
+    CMove genMove;
+    bool captureFound = generateFirstLVACaptureForSquare<chance>(square, ebb.pinned, ebb.threatened, ebb.myKing, ebb.myKingIndex, ebb.allPieces, ebb.myPawns, myNonPinnedKnights, myBishops, myRooks, myQueens, &genMove);
+
+    if (captureFound)
+    {
+        int capturedPiece = getPieceAtSquare(pos, square);
+        uint64 zero = 0;
+        MakeMove(pos, zero, genMove);
+
+        int16 score = seeSquare<!chance>(pos, square);
+        score = materialEval[capturedPiece] - score;
+        if (score < 0)
+            score = 0;
+
+        return score;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+
+// uses static exchange evaluation to figure out if the capture is winning or losing
+// ideally we should just evaluate SEE for a square (by using LVA on the square first, but the capture
+// moves has already been generated at this point and we are interested in sorting them)
+template<uint8 chance>
+int16 BitBoardUtils::EvaluateSEE(HexaBitBoardPosition *origpos, CMove capture)
+{
+    // TODO: optimize this function
+    // 
+
+    HexaBitBoardPosition pos = *origpos;
+
+    // the square under consideration
+    uint64 square = BIT(capture.getTo());
+
+    int sp = 0;
+    int capturedPiece = getPieceAtSquare(&pos, square);
+    int16 capturedVal = materialEval[capturedPiece];
+
+    if (capture.getFlags() & CM_FLAG_PROMOTION)
+    {
+        capturedVal += materialEval[(capture.getFlags() & 0x3) + KNIGHT];
+    }
+    else if (capture.getFlags() == CM_FLAG_EP_CAPTURE)
+    {
+        capturedVal = PAWN_MATERIAL_VAL;
+    }
+
+    // first make the capture
+    uint64 zero;
+    MakeMove(&pos, zero, capture);
+
+    int16 score = capturedVal - seeSquare<!chance>(&pos, square);
+    
+    return score;
+}
+
+
+template int16 BitBoardUtils::EvaluateSEE<WHITE>(HexaBitBoardPosition *origpos, CMove capture);
+template int16 BitBoardUtils::EvaluateSEE<BLACK>(HexaBitBoardPosition *origpos, CMove capture);
+
+template int16 BitBoardUtils::seeSquare<BLACK>(HexaBitBoardPosition *pos, uint64 square);
+template int16 BitBoardUtils::seeSquare<WHITE>(HexaBitBoardPosition *pos, uint64 square);
