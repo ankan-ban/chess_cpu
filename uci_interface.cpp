@@ -114,8 +114,8 @@ void UciInterface::ProcessCommands()
             // first command to indicate uci mode
 
             // send back the IDs
-            printf("id name AnkanChess 0.0\n\n");
-            printf("id author Ankan Banerjee\n\n");
+            printf("id name Paladin 0.1\n");
+            printf("id author Ankan Banerjee\n");
             fflush(stdout);
             BitBoardUtils::init();
             TranspositionTable::init();

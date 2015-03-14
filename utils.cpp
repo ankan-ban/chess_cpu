@@ -204,7 +204,6 @@ void Utils::boardHexBBTo088(BoardPosition088 *pos088, HexaBitBoardPosition *posB
 
     uint64 queens = posBB->bishopQueens & posBB->rookQueens;
 
-#define RANKS2TO7 0x00FFFFFFFFFFFF00ull
     uint64 pawns = posBB->pawns & RANKS2TO7;
 
     uint64 allPieces = posBB->kings | posBB->knights | pawns | posBB->rookQueens | posBB->bishopQueens;

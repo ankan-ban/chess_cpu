@@ -7,6 +7,7 @@
 #include <chrono>
 #include "timer.h"
 
+#include "bb_consts.h"
 
 #if _DEBUG
 #include <assert.h>
@@ -433,7 +434,6 @@ public:
 
 };
 
-
 class Game
 {
 private:
@@ -445,6 +445,10 @@ private:
 
     // time to search for (in ms)
     static int searchTime;
+
+    // max time limit (in ms)
+    // the search must be aborted if we exceed this
+    static int searchTimeLimit;
 
     static int maxSearchDepth;
 
@@ -461,6 +465,16 @@ private:
     // plyNo is relative to the position provided in "position" uci command
     static uint64 posHashes[MAX_GAME_LENGTH];
     static int    plyNo;
+
+    // used for history heuristic
+    // TODO: also consider storing these per piece type?
+#if HISTORY_PER_PIECE == 1
+    static uint32 historyScore[2][6][64][64];
+    static uint32 butterflyScore[2][6][64][64];
+#else
+    static uint32 historyScore[2][64][64];
+    static uint32 butterflyScore[2][64][64];
+#endif
 
     // a ref count of ir-reversible moves (*not* incremented during search)
     // only incremented as the game progresses (when a move is actually made)
@@ -486,10 +500,15 @@ private:
     template<uint8 chance>
     static int16 SortCapturesSEE(HexaBitBoardPosition *pos, CMove* captures, int nMoves);
 
+    // sort moves on history heuristic
+    static void SortMovesHistory(HexaBitBoardPosition *pos, CMove *moves, int nMoves, uint8 chance);
+
+    static void UpdateHistory(HexaBitBoardPosition *pos, CMove move, int depth, uint8 chance, bool betaCutoff);
+
 
     // perform alpha-beta search on the given position
     template<uint8 chance>
-    static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta, bool tryNullMove);
+    static int16 alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int ply, int16 alpha, int16 beta, bool tryNullMove, CMove lastMove);
 
     template<uint8 chance>
     static int16 alphabetaRoot(HexaBitBoardPosition *pos, int depth, int ply);

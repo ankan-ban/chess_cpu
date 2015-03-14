@@ -1,6 +1,5 @@
 #include "chess.h"
 
-
 // good page on quiescent-search
 // http://web.archive.org/web/20040427014440/brucemo.com/compchess/programming/quiescent.htm#MVVLVA
 
@@ -76,7 +75,7 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
 
     for (int i = 0; i < nMoves; i++)
     {
-#if Q_SEARCH_SEE_PRUNING == 1
+#if USE_Q_SEARCH_SEE_PRUNING == 1
         if ((!inCheck) && BitBoardUtils::EvaluateSEE<chance>(pos, newMoves[i]) <= 0)
             continue;
 #endif
@@ -154,6 +153,94 @@ int16 Game::q_search(HexaBitBoardPosition *pos, uint64 hash, int depth, int16 al
     return currentMax;
 }
 
+// update history
+// TODO: do we want to clear history tables after every move actually made ?
+void Game::UpdateHistory(HexaBitBoardPosition *pos, CMove move, int depth, uint8 chance, bool betaCutoff)
+{
+#if USE_HISTORY_HEURISTIC == 1
+
+    // adding history data for all depths seems to help a tiny bit (reduces nodes searched.. but increases time slightly)
+    //if (depth < HISTORY_SORT_MIN_DEPTH)
+    //    return;
+
+#if HISTORY_PER_PIECE == 1
+    uint8 piece = BitBoardUtils::getPieceAtSquare(pos, BIT(move.getFrom())) - 1;
+    #define ARRAY_DIM [piece]
+#else
+    #define ARRAY_DIM
+#endif
+
+    // update history table
+    if (betaCutoff)
+    {
+        historyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] += depth * depth;
+        if (historyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] > INT_MAX)
+        {
+            historyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] /= 2;
+            butterflyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] /= 2;
+        }
+    }
+    else
+    {
+        // update butterfly table
+        butterflyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] += depth * depth;
+        if (butterflyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] > INT_MAX)
+        {
+            butterflyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] /= 2;
+            historyScore[chance]ARRAY_DIM[move.getFrom()][move.getTo()] /= 2;
+        }
+    }
+#endif
+}
+
+// sort quiet moves based on history heuristic
+void Game::SortMovesHistory(HexaBitBoardPosition *pos, CMove* moves, int nMoves, uint8 chance)
+{
+    float scores[MAX_MOVES];
+    for (int i = 0; i < nMoves; i++)
+    {
+        if (!moves[i].isValid())
+        {
+            scores[i] = 0.0f;
+            continue;
+        }
+
+#if HISTORY_PER_PIECE == 1
+        uint8 piece = BitBoardUtils::getPieceAtSquare(pos, BIT(moves[i].getFrom())) - 1;
+        #define ARRAY_DIM [piece]
+#else
+        #define ARRAY_DIM
+#endif
+
+        if (butterflyScore[chance]ARRAY_DIM[moves[i].getFrom()][moves[i].getTo()] == 0)
+        {
+            scores[i] = (float) historyScore[chance]ARRAY_DIM[moves[i].getFrom()][moves[i].getTo()];
+        }
+        else
+        {
+            scores[i] = ((float)   historyScore[chance]ARRAY_DIM[moves[i].getFrom()][moves[i].getTo()]) /
+                                 butterflyScore[chance]ARRAY_DIM[moves[i].getFrom()][moves[i].getTo()] ;
+        }
+    }
+
+    // sort move list based on score 
+    // use insertion sort - might be too slow 
+    // TODO: (we better avoid sorting and try picking best from the list when trying out moves (faster if we have a beta cutoff soon...)
+    for (int i = 1; i < nMoves; i++)
+    {
+        int j = i;
+        float scoreX = scores[j];
+        CMove moveX = moves[j];
+        while (j > 0 && scores[j - 1] < scoreX)
+        {
+            scores[j] = scores[j - 1];
+            moves[j] = moves[j - 1];
+            j--;
+        }
+        scores[j] = scoreX;
+        moves[j] = moveX;
+    }
+}
 
 // returns the index of first non-winning capture (or the no. of winning captures)
 template<uint8 chance>
@@ -196,6 +283,23 @@ int16 Game::SortCapturesSEE(HexaBitBoardPosition *pos, CMove* captures, int nMov
     return winningCaptures;
 }
 
+
+// no of plies to reduce for LMR
+// no - longer used - we always reduce by 1 ply
+static int getLMRReduction(int depth, bool isPVNode, int movesSearched)
+{
+    if (isPVNode)
+        return 1;
+
+    if (movesSearched <= 8)
+        return 1;
+
+    if (depth >= 6)
+        return 2;
+
+    return 1;
+}
+
 // adjust mate score returned to the ply where we extended the depth
 static int16 adjustScoreForExtension(int16 score, bool extended)
 {
@@ -215,8 +319,16 @@ static int16 adjustScoreForExtension(int16 score, bool extended)
 
 // negamax forumlation of alpha-beta search
 template<uint8 chance>
-int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool allowNullMove)
+int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool allowNullMove, CMove lastMove)
 {
+    // check for timeout
+    if (depth > 3)
+    {
+        uint64 timeElapsed = timer.stop();
+        if (timeElapsed > (searchTimeLimit))
+            throw std::exception();
+    }
+
     // expand bitboard structure (TODO: come up with something that doesn't need expanding ?)
     ExpandedBitBoard bb = BitBoardUtils::ExpandBitBoard<chance>(pos);
 
@@ -230,11 +342,23 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
     bool extendedDepth = false;
 
-#if CHECK_EXTENSIONS == 1
+#if USE_CHECK_EXTENSIONS == 1
     if (inCheck)
     {
         depth++;
         extendedDepth = true;
+    }
+#endif
+
+#if USE_PROMOTION_EXTENSION == 1
+    if (extendedDepth == false)
+    {
+        uint64 dst = BIT(lastMove.getTo());
+        if ((dst & (RANK2 | RANK7)) && BitBoardUtils::getPieceAtSquare(pos, dst) == PAWN)
+        {
+            depth++;
+            extendedDepth = true;
+        }
     }
 #endif
 
@@ -256,6 +380,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     }
 
 
+#if USE_NULL_MOVE_PRUNING == 1
     // try null move
     
     // the reduction factor (no of plies we save by doing null move search first)
@@ -265,7 +390,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     if (allowNullMove &&                                                    // avoid doing null move twice in a row
         !inCheck &&                                                         // can't do null move when in check
         depth > R &&                                                        // can't do near horizon
-        BitBoardUtils::countMoves<chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE)  // avoid when there are very few valid moves
+        BitBoardUtils::countMoves<chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE &&
+        BitBoardUtils::countMoves<!chance>(pos) >= MIN_MOVES_FOR_NULL_MOVE) // avoid when there are very few valid moves
     {
 
         if (depth >= MIN_DEPTH_FOR_EXTRA_REDUCTION)
@@ -287,10 +413,9 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             newHash ^= BitBoardUtils::zob.enPassentTarget[ep - 1];
         }
 
-        int16 nullMoveScore = -alphabeta<!chance>(pos, newHash, depth - 1 - R, curPly + 1, -beta, -beta + 1, false);
+        int16 nullMoveScore = -alphabeta<!chance>(pos, newHash, depth - 1 - R, curPly + 1, -beta, -beta + 1, false, CMove(0));
 
-        // not needed as we only extend when in check, and we don't perform null move when in check
-        //nullMoveScore = adjustScoreForExtension(nullMoveScore, extendedDepth);
+        nullMoveScore = adjustScoreForExtension(nullMoveScore, extendedDepth);
         
 
         // undo null move
@@ -299,7 +424,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
         if (nullMoveScore >= beta) return nullMoveScore;
     }
-    
+#endif    
 
 
     // lookup in the transposition table
@@ -345,7 +470,7 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
         if (hashDepth < iidDepth)
         {
-            alphabeta<chance>(pos, hash, iidDepth, curPly, alpha, beta, allowNullMove);
+            alphabeta<chance>(pos, hash, iidDepth, curPly, alpha, beta, allowNullMove, lastMove);
 
             // again query the TT (to get updated value)
             foundInTT = TranspositionTable::lookup(hash, depth, &hashScore, &scoreType, &hashDepth, &ttMove);
@@ -359,6 +484,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
 
     int16 currentMax = -INF;
 
+    int movesSearched = 0;
+
     bool improvedAlpha = false;
 
     // check hash move first
@@ -369,8 +496,15 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
         uint64 newHash = hash;
         BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+        movesSearched++;
+        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, ttMove);
         curScore = adjustScoreForExtension(curScore, extendedDepth);
+
+        // update history tables if this was a non-capture move
+        if (!(ttMove.getFlags() & CM_FLAG_CAPTURE))
+        {
+            UpdateHistory(pos, ttMove, depth, chance, curScore >= beta);
+        }
 
         if (curScore >= beta)
         {
@@ -400,7 +534,10 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     nonTTSearched++;
 #endif
 
+    // searched points to the index in newMoves list
+    // but we might have tried more moves than that (e.g from TT or killers)
     int searched = 0;
+    int winingCaptures = 0;
 
     // generate child nodes
     CMove newMoves[MAX_MOVES];
@@ -409,23 +546,28 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     if (inCheck)
     {
         nMoves = BitBoardUtils::generateMovesOutOfCheck<chance>(&bb, newMoves);
+        winingCaptures = nMoves;
     }
     else
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
 
 
-#if SEE_MOVE_ORDERING == 1
+#if USE_SEE_MOVE_ORDERING == 1
         // sorting captures using SEE is overall a loss and sometimes even results in bigger tree! Bug?
         // searching losing captures after quiet moves results in even bigger tree! Another bug?
         if (depth >= MIN_DEPTH_FOR_SEE)
         {
-            int winningCaptures = SortCapturesSEE<chance>(pos, newMoves, nMoves);
+            winingCaptures = SortCapturesSEE<chance>(pos, newMoves, nMoves);
         }
 #endif
 
+#if SEARCH_LOSING_CAPTURES_AFTER_KILLERS == 0
+        winingCaptures = nMoves;
+#endif
+
         // search captures first
-        for (int i = 0; i < nMoves; i++)
+        for (int i = 0; i < winingCaptures; i++)
         {
             if (newMoves[i] != ttMove)
             {
@@ -433,7 +575,8 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
                 uint64 newHash = hash;
                 BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+                movesSearched++;
+                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
                 curScore = adjustScoreForExtension(curScore, extendedDepth);
 
                 if (curScore >= beta)
@@ -503,8 +646,11 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             uint64 newHash = hash;
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            movesSearched++;
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
             curScore = adjustScoreForExtension(curScore, extendedDepth);
+
+            UpdateHistory(pos, newMoves[i], depth, chance, curScore >= beta);
 
             if (curScore >= beta)
             {
@@ -540,8 +686,60 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
     nonKillersSearched++;
 #endif
 
+#if SEARCH_LOSING_CAPTURES_AFTER_KILLERS == 1
+    // search losing captures
+    for (int i = winingCaptures; i < searched; i++)
+    {
+        if (newMoves[i] != ttMove)
+        {
+            HexaBitBoardPosition newPos = *pos;
+            uint64 newHash = hash;
+            BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
+
+            movesSearched++;
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
+            curScore = adjustScoreForExtension(curScore, extendedDepth);
+
+            if (curScore >= beta)
+            {
+                TranspositionTable::update(hash, curScore, SCORE_GE, newMoves[i], depth, curPly);
+                return curScore;
+            }
+
+            if (curScore > currentMax)
+            {
+                currentMax = curScore;
+                if (currentMax > alpha)
+                {
+                    alpha = currentMax;
+                    improvedAlpha = true;
+                }
+
+                currentBestMove = newMoves[i];
+            }
+        }
+    }
+#endif
+
+    // used for LMR
+#if USE_LATE_MOVE_REDUCTION == 1
+    int16 standpat = 0;
+    if (depth >= LMR_MIN_DEPTH)
+    {
+        standpat = BitBoardUtils::Evaluate(pos);
+    }
+#endif
+
+#if USE_HISTORY_HEURISTIC == 1
+    // sort non-captures based on history heuristic
+    if (depth >= HISTORY_SORT_MIN_DEPTH)
+    {
+        SortMovesHistory(pos, &newMoves[searched], nMoves - searched, chance);
+    }
+#endif
 
     // try remaining moves (non capture, non TT and non-killer)
+    // searched == no. of captures when not in check, and 0 when in check
     for (int i = searched; i < nMoves; i++)
     {
         if (newMoves[i].isValid())
@@ -550,8 +748,41 @@ int16 Game::alphabeta(HexaBitBoardPosition *pos, uint64 hash, int depth, int cur
             uint64 newHash = hash;
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            bool needFullDepthSearch = true;
+            int16 curScore = 0;
+
+#if USE_LATE_MOVE_REDUCTION == 1
+            // try late move reduction
+            // see http://www.glaurungchess.com/lmr.html for a good introduction to LMR
+
+            if (depth >= LMR_MIN_DEPTH &&                                   // we are at sufficient depth
+                movesSearched >= LMR_FULL_DEPTH_MOVES &&                    // sufficient no. of moves have been already searched at full depth
+                movesSearched - searched >= LMR_FULL_DEPTH_QUEIT_MOVES &&   // sufficient no. of quite moves have been searched at full depth
+                !inCheck &&                                                 // not in check
+              //!improvedAlpha &&                                           // this is not a PV node (makes engine significantly weaker!)
+                standpat - LMR_EVAL_THRESHOLD < alpha &&                    // static eval at the node is less than best move found (again doesn't seem to help)
+              //!(BIT(newMoves[i].getFrom()) & bb.pawns) &&                 // don't reduce pawn pushes
+                !BitBoardUtils::IsInCheck(&newPos)                          // the move doesn't cause a check to opponent side
+                )
+            {
+                // search with reduced depth (also notice null-window - i.e, beta = alpha+1 as we are only interested in checking if the returned value is > alpha)
+                curScore = -alphabeta<!chance>(&newPos, newHash, depth - 2 /*- getLMRReduction(depth, improvedAlpha, movesSearched)*/, curPly + 1, -(alpha + 1), -alpha, true, newMoves[i]);
+                if (curScore <= currentMax)
+                {
+                    needFullDepthSearch = false;
+                }
+            }
+#endif
+
+            if (needFullDepthSearch)
+            {
+                curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
+            }
             curScore = adjustScoreForExtension(curScore, extendedDepth);
+
+            movesSearched++;
+
+            UpdateHistory(pos, newMoves[i], depth, chance, curScore >= beta);
 
             if (curScore >= beta)
             {
@@ -645,7 +876,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
         uint64 newHash = posHash;
         BitBoardUtils::MakeMove(&newPos, newHash, ttMove);
 
-        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+        int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, ttMove);
 
         if (curScore > alpha)
         {
@@ -670,12 +901,12 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
     {
         nMoves = BitBoardUtils::generateCaptures<chance>(&bb, newMoves);                // generate captures in MVV-LVA order
 
-#if SEE_MOVE_ORDERING == 1
-        // sorting captures using SEE at root node always results in bigger tree! Bug?
+#if USE_SEE_MOVE_ORDERING == 1
+        // sorting captures using SEE at root node always results in bigger tree (for pos 2 of cpw)! Bug?
         SortCapturesSEE<chance>(pos, newMoves, nMoves);
 #endif
 
-        // search captures first
+        // search (winning) captures first
         for (int i = 0; i < nMoves; i++)
         {
             if (newMoves[i] != ttMove)
@@ -684,7 +915,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                 uint64 newHash = posHash;
                 BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+                int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
 
                 if (curScore > alpha)
                 {
@@ -692,7 +923,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                     currentBestMove = newMoves[i];
                 }
 
-                // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
+                // check if we are out of time.. and exit the search if so
                 uint64 timeElapsed = timer.stop();
                 if (timeElapsed > (searchTime / 1.01f))
                 {
@@ -716,7 +947,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
             uint64 newHash = posHash;
             BitBoardUtils::MakeMove(&newPos, newHash, newMoves[i]);
 
-            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true);
+            int16 curScore = -alphabeta<!chance>(&newPos, newHash, depth - 1, curPly + 1, -beta, -alpha, true, newMoves[i]);
 
             if (curScore > alpha)
             {
@@ -724,7 +955,7 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
                 currentBestMove = newMoves[i];
             }
 
-            // check if we are out of time.. and exit the search if so (this is a somewhat random place to put this - just hope we never lose on time)
+            // check if we are out of time.. and exit the search if so
             uint64 timeElapsed = timer.stop();
             if (timeElapsed > (searchTime / 1.01f))
             {
@@ -745,8 +976,8 @@ int16 Game::alphabetaRoot(HexaBitBoardPosition *pos, int depth, int curPly)
 
 
 
-template int16 Game::alphabeta<WHITE>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove);
-template int16 Game::alphabeta<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove);
+template int16 Game::alphabeta<WHITE>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove, CMove lastMove);
+template int16 Game::alphabeta<BLACK>(HexaBitBoardPosition *pos, uint64 hash, int depth, int curPly, int16 alpha, int16 beta, bool tryNullMove, CMove lastMove);
 
 
 template int16 Game::alphabetaRoot<WHITE>(HexaBitBoardPosition *pos, int depth, int curPly);
@@ -771,7 +1002,6 @@ uint64   TranspositionTable::hashBits;   // bits of hash key used for the hash p
 uint64* TranspositionTable::qTT;         // transposition table for q-search
 
 
-#define ALLSET    0xFFFFFFFFFFFFFFFFull
 void  TranspositionTable::init(int byteSize)
 {
 #if USE_DUAL_SLOT_TT == 1

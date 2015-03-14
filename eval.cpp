@@ -1,5 +1,4 @@
 #include "chess.h"
-#include "bb_consts.h"
 
 // simple evaluation function taken from chess programming wiki
 // References:
@@ -30,26 +29,48 @@ const int16 materialEval[] = { 0,
                               INF};
 
 // piece-square tables - from black's point of view and then from white's pov
-const int16 squareEvalPawn[] =
+const int16 squareEvalPawnMid[] =
 {
      0,  0,  0,  0,  0,  0,  0,  0,
-    50, 50, 50, 50, 50, 50, 50, 50,
-    10, 10, 20, 30, 30, 20, 10, 10,
-     5,  5, 10, 25, 25, 10,  5,  5,
-     0,  0,  0, 20, 20,  0,  0,  0,
-     5, -5,-10,  0,  0,-10, -5,  5,
-     5, 10, 10,-20,-20, 10, 10,  5,
+    25, 25, 25, 25, 25, 25, 25, 25,
+     5,  5, 10, 15, 15, 10,  5,  5,
+     3,  3,  5, 12, 12,  5,  3,  3,
+     0,  0,  0, 10, 10,  0,  0,  0,
+     3, -3, -5,  0,  0, -5, -3,  3,
+     3,  6,  6,-10,-10,  6,  6,  3,
      0,  0,  0,  0,  0,  0,  0,  0,
 
      0,  0,  0,  0,  0,  0,  0,  0,
-     5, 10, 10,-20,-20, 10, 10,  5,
-     5, -5,-10,  0,  0,-10, -5,  5,
-     0,  0,  0, 20, 20,  0,  0,  0,
-     5,  5, 10, 25, 25, 10,  5,  5,
-    10, 10, 20, 30, 30, 20, 10, 10,
-    50, 50, 50, 50, 50, 50, 50, 50,
+     3,  6,  6,-10,-10,  6,  6,  3,
+     3, -3, -5,  0,  0, -5, -3,  3,
+     0,  0,  0, 10, 10,  0,  0,  0,
+     3,  3,  5, 12, 12,  5,  3,  3,
+     5,  5, 10, 15, 15, 10,  5,  5,
+    25, 25, 25, 25, 25, 25, 25, 25,
      0,  0,  0,  0,  0,  0,  0,  0,
 };
+
+const int16 squareEvalPawnEnd[] =
+{
+     0,  0,  0,  0,  0,  0,  0,  0,
+    25, 25, 25, 25, 25, 25, 25, 25,
+    10, 10, 10, 15, 15, 10, 10, 10,
+     7,  7,  7,  7,  7,  7,  7,  7,
+     5,  5,  5,  5,  5,  5,  5,  5,
+     2,  2,  2,  2,  2,  2,  2,  2,
+     0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0,
+
+     0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0,
+     2,  2,  2,  2,  2,  2,  2,  2,
+     5,  5,  5,  5,  5,  5,  5,  5,
+     7,  7,  7,  7,  7,  7,  7,  7,
+    10, 10, 10, 15, 15, 10, 10, 10,
+    25, 25, 25, 25, 25, 25, 25, 25,
+     0,  0,  0,  0,  0,  0,  0,  0,
+};
+
 
 const int16 squareEvalKnight[] =
 {
@@ -412,18 +433,18 @@ const int16 passedPawnBonusBlack[] =
     45, 45, 45, 45, 45, 45, 45, 45,
     40, 40, 40, 40, 40, 40, 40, 40,
     35, 35, 35, 35, 35, 35, 35, 35,
-    32, 32, 32, 32, 32, 32, 32, 32,
     30, 30, 30, 30, 30, 30, 30, 30,
-    25, 25, 25, 25, 25, 25, 25, 25,
+    20, 20, 20, 20, 20, 20, 20, 20,
+    15, 15, 15, 15, 15, 15, 15, 15,
      0,  0,  0,  0,  0,  0,  0,  0,
 
 };
 const int16 passedPawnBonusWhite[] =
 {
       0,  0,  0,  0,  0,  0,  0,  0,
-     25, 25, 25, 25, 25, 25, 25, 25,
+     15, 15, 15, 15, 15, 15, 15, 15,
+     20, 20, 20, 20, 20, 20, 20, 20,
      30, 30, 30, 30, 30, 30, 30, 30,
-     32, 32, 32, 32, 32, 32, 32, 32,
      35, 35, 35, 35, 35, 35, 35, 35,
      40, 40, 40, 40, 40, 40, 40, 40,
      45, 45, 45, 45, 45, 45, 45, 45,
@@ -446,7 +467,6 @@ int16 BitBoardUtils::evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame
     score += doubledBlackPawns * 20; // doubledPawnCost[popCount(ebb.blackPawns)];
     
     // passed pawns
-#if 1
     int16 passedPawnScore = 0;
     {
         uint64 allFrontSpansBlack = westOne(blackFrontSpan) | blackFrontSpan | eastOne(blackFrontSpan);
@@ -456,6 +476,11 @@ int16 BitBoardUtils::evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame
         {
             uint64 pawn = getOne(whitePassedPawns);
             passedPawnScore += passedPawnBonusWhite[bitScan(pawn)];
+
+            // additional bonus for connected passed pawns
+            if ((eastOne(pawn) | westOne(pawn) | southEastOne(pawn) | southWestOne(pawn)) & ebb.whitePawns)
+                passedPawnScore += passedPawnBonusWhite[bitScan(pawn)];
+
             whitePassedPawns ^= pawn;
         }
 
@@ -466,6 +491,11 @@ int16 BitBoardUtils::evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame
         {
             uint64 pawn = getOne(blackPassedPawns);
             passedPawnScore -= passedPawnBonusBlack[bitScan(pawn)];
+
+            // additional bonus for connected passed pawns
+            if ((eastOne(pawn) | westOne(pawn) | northEastOne(pawn) | northWestOne(pawn)) & ebb.blackPawns)
+                passedPawnScore -= passedPawnBonusBlack[bitScan(pawn)];
+
             blackPassedPawns ^= pawn;
         }
     }
@@ -474,7 +504,6 @@ int16 BitBoardUtils::evaluatePawnStructure(const EvalBitBoard &ebb, bool endGame
         passedPawnScore /= 2;
     }
     score += passedPawnScore;
-#endif
     return score;
 }
 
@@ -529,7 +558,6 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
     // maybe use two tables - for white and black pieces?
     int16 positional = 0;
 
-    positional += getPieceSquareScore(allPawns,   ebb.whitePieces, squareEvalPawn) / 2;
     positional += getPieceSquareScore(allKnights, ebb.whitePieces, squareEvalKnight);
     positional += getPieceSquareScore(allBishops, ebb.whitePieces, squareEvalBishop);
     positional += getPieceSquareScore(allRooks,   ebb.whitePieces, squareEvalRook);
@@ -545,10 +573,12 @@ int16 BitBoardUtils::Evaluate(HexaBitBoardPosition *pos)
 
     if (endGame)
     {
+        positional += getPieceSquareScore(allPawns, ebb.whitePieces, squareEvalPawnEnd);
         positional += getPieceSquareScore(pos->kings, ebb.whitePieces, squareEvalKingEnd);
     }
     else
     {
+        positional += getPieceSquareScore(allPawns, ebb.whitePieces, squareEvalPawnMid);
         positional += getPieceSquareScore(pos->kings, ebb.whitePieces, squareEvalKingMid);
     }
 

@@ -1,6 +1,5 @@
 #include "chess.h"
 #include "randoms.h"
-#include "bb_consts.h"
 
 // static member variable definations
 ZobristRandoms BitBoardUtils::zob;
@@ -1377,7 +1376,6 @@ void BitBoardUtils::MakeMove(HexaBitBoardPosition *pos, uint64 &hash, CMove move
 }
 
 // Ankan - TODO: check if this can be optimized? Maybe simplify the bitboard structure?
-// no longer used
 bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
 {
     uint8 chance = pos->chance;

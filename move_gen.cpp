@@ -1,6 +1,5 @@
 // implementation of methods in BitBoradUtils class specifically related to move generation
 #include "chess.h"
-#include "bb_consts.h"
 
 // adds the given board to list and increments the move counter
 void BitBoardUtils::addMove(int *nMoves, HexaBitBoardPosition **newPos, HexaBitBoardPosition *newBoard)

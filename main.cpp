@@ -14,6 +14,8 @@ int main()
 // static variable definations
 HexaBitBoardPosition Game::pos;
 int Game::searchTime;
+int Game::searchTimeLimit;
+
 int Game::maxSearchDepth;
 
 CMove Game::bestMove;
@@ -36,6 +38,14 @@ uint8 Game::irreversibleMoveRefCount;
 
 CMove Game::killers[MAX_GAME_LENGTH][MAX_KILLERS];
 
+#if HISTORY_PER_PIECE == 1
+uint32 Game::historyScore[2][6][64][64];
+uint32 Game::butterflyScore[2][6][64][64];
+#else
+uint32 Game::historyScore[2][64][64];
+uint32 Game::butterflyScore[2][64][64];
+#endif
+
 Timer Game::timer;
 
 
@@ -48,8 +58,11 @@ void Game::Reset()
     memset(&bestMove, 0, sizeof(bestMove));
     memset(posHashes, 0, sizeof(posHashes));
     memset(killers, 0, sizeof(killers));
+    memset(historyScore, 0, sizeof(historyScore));
+    memset(butterflyScore, 0, sizeof(butterflyScore));
 
     searchTime = 0;
+    searchTimeLimit = 0;
     maxSearchDepth = MAX_SEARCH_LENGTH;
     plyNo = 0;
     irreversibleMoveRefCount = 0;
@@ -62,6 +75,7 @@ void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int bi
     if (searchTimeExact)
     {
         searchTime = searchTimeExact;
+        searchTimeLimit = searchTimeExact;
     }
     else
     {
@@ -80,9 +94,17 @@ void Game::SetTimeControls(int wtime, int btime, int movestogo, int winc, int bi
 
         if (movestogo == 0)
         {
-            movestogo = 60;
+            movestogo = 40;
         }
         searchTime = x / (movestogo) + inc;
+
+        // set search time limit as 2X of time normally allocated - but limited to actual time remaining
+        searchTimeLimit = 2 * searchTime;
+
+        if (searchTimeLimit >= (x + inc))
+        {
+            searchTimeLimit = x + inc - 1;
+        }
 
     }
 }
@@ -105,10 +127,17 @@ void Game::StartSearch()
     {
 
         int16 eval = 0;
-        if (pos.chance == WHITE)
-            eval = alphabetaRoot<WHITE>(&pos, depth, plyNo + 1);
-        else
-            eval = alphabetaRoot<BLACK>(&pos, depth, plyNo + 1);
+        try
+        {
+            if (pos.chance == WHITE)
+                eval = alphabetaRoot<WHITE>(&pos, depth, plyNo + 1);
+            else
+                eval = alphabetaRoot<BLACK>(&pos, depth, plyNo + 1);
+        }
+        catch (std::exception exp)
+        {
+            break;
+        }
 
         GetPVFromTT(&pos);
 
@@ -160,7 +189,7 @@ void Game::StartSearch()
         fflush(stdout);
 
         // TODO: better time management
-        if (foundMate || (timeElapsed > (searchTime / 2.0f)))
+        if (foundMate || (timeElapsed > (searchTime / 1.3f)))
         {
             break;
         }
