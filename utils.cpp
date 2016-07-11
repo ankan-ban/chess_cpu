@@ -566,6 +566,7 @@ uint8 getPieceAtSquare(const HexaBitBoardPosition *pos, int sq)
 
 
 #ifndef _WIN64
+#ifndef _WIN32
 // I get compile error if I try to define abs in win 64 bit build
 int abs(int x)
 {
@@ -574,6 +575,7 @@ int abs(int x)
     else
         return x;
 }
+#endif
 #endif
 
 // reads a move in algebric notation into a move_list_item

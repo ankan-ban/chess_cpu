@@ -79,9 +79,9 @@ uint8 BitBoardUtils::bitScan(uint64 x)
     return (uint8)index;
 #else
 
-    uint32 lo = (uint32)x;
-    uint32 hi = (uint32)(x >> 32);
-    uint32 id;
+    unsigned long lo = (unsigned long)x;
+    unsigned long hi = (unsigned long)(x >> 32);
+    unsigned long id;
 
     if (lo)
         _BitScanForward(&id, lo);
@@ -1404,6 +1404,10 @@ bool BitBoardUtils::IsInCheck(HexaBitBoardPosition *pos)
 
 
 template<uint8 chance>
+#if _WIN32 || _WIN64
+// WAR for a possible compiler bug with VS 2013!
+__forceinline
+#endif
 ExpandedBitBoard BitBoardUtils::ExpandBitBoard(HexaBitBoardPosition *pos)
 {
     ExpandedBitBoard op;
